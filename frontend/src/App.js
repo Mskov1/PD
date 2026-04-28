@@ -1,38 +1,218 @@
-import { useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import "@/App.css";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import axios from "axios";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Toaster, toast } from "sonner";
+import { Plant, Gauge, ChatCircleDots, Users } from "@phosphor-icons/react";
+import { motion, AnimatePresence } from "framer-motion";
+import SimpleUI from "@/components/SimpleUI";
+import ControlPanel from "@/components/ControlPanel";
+import AIAssistant from "@/components/AIAssistant";
+import CommunityFeed from "@/components/CommunityFeed";
+import NotificationCenter from "@/components/NotificationCenter";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
-const Home = () => {
-  const helloWorldApi = async () => {
+const Dashboard = () => {
+  const [activeTab, setActiveTab] = useState("simple");
+  const [plants, setPlants] = useState([]);
+  const [catalog, setCatalog] = useState([]);
+  const [tentStatus, setTentStatus] = useState(null);
+  const [notifications, setNotifications] = useState([]);
+
+  const fetchPlants = useCallback(async () => {
     try {
-      const response = await axios.get(`${API}/`);
-      console.log(response.data.message);
+      const res = await axios.get(`${API}/plants`);
+      setPlants(res.data);
+    } catch (e) { console.error("Failed to fetch plants", e); }
+  }, []);
+
+  const fetchCatalog = useCallback(async () => {
+    try {
+      const res = await axios.get(`${API}/plants/catalog`);
+      setCatalog(res.data);
+    } catch (e) { console.error("Failed to fetch catalog", e); }
+  }, []);
+
+  const fetchTentStatus = useCallback(async () => {
+    try {
+      const res = await axios.get(`${API}/tent/status`);
+      setTentStatus(res.data);
+    } catch (e) { console.error("Failed to fetch tent status", e); }
+  }, []);
+
+  const fetchNotifications = useCallback(async () => {
+    try {
+      const res = await axios.get(`${API}/notifications`);
+      setNotifications(res.data);
+    } catch (e) { console.error("Failed to fetch notifications", e); }
+  }, []);
+
+  const checkNotifications = useCallback(async () => {
+    try {
+      const res = await axios.post(`${API}/notifications/check`);
+      if (res.data.count > 0) {
+        fetchNotifications();
+        res.data.new_notifications.forEach((n) => {
+          toast(n.message, {
+            style: {
+              borderLeft: `4px solid ${
+                n.type === "harvest_ready" ? "#FF6B35" :
+                n.type === "low_water" ? "#4A90E2" :
+                n.type === "low_nutrients" ? "#8D6B94" : "#D33F49"
+              }`,
+            },
+          });
+        });
+      }
+    } catch (e) { console.error("Failed to check notifications", e); }
+  }, [fetchNotifications]);
+
+  useEffect(() => {
+    fetchCatalog();
+    fetchPlants();
+    fetchTentStatus();
+    fetchNotifications();
+  }, [fetchCatalog, fetchPlants, fetchTentStatus, fetchNotifications]);
+
+  useEffect(() => {
+    const interval = setInterval(checkNotifications, 60000);
+    return () => clearInterval(interval);
+  }, [checkNotifications]);
+
+  const addPlant = async (catalogId, nickname) => {
+    try {
+      const res = await axios.post(`${API}/plants`, { catalog_id: catalogId, nickname });
+      setPlants((prev) => [...prev, res.data]);
+      toast.success(`${res.data.name} added to your tent!`);
     } catch (e) {
-      console.error(e, `errored out requesting / api`);
+      toast.error("Failed to add plant");
     }
   };
 
-  useEffect(() => {
-    helloWorldApi();
-  }, []);
+  const removePlant = async (plantId) => {
+    try {
+      await axios.delete(`${API}/plants/${plantId}`);
+      setPlants((prev) => prev.filter((p) => p.id !== plantId));
+      toast("Plant removed from tent");
+    } catch (e) {
+      toast.error("Failed to remove plant");
+    }
+  };
+
+  const harvestPlant = async (plantId) => {
+    try {
+      const res = await axios.put(`${API}/plants/${plantId}/harvest`);
+      setPlants((prev) => prev.map((p) => (p.id === plantId ? res.data : p)));
+      toast.success("Harvest logged! Check the community feed.", {
+        style: { borderLeft: "4px solid #FF6B35" },
+      });
+    } catch (e) {
+      toast.error("Failed to harvest plant");
+    }
+  };
+
+  const updateTentStatus = async (newStatus) => {
+    try {
+      const res = await axios.put(`${API}/tent/status`, newStatus);
+      setTentStatus(res.data);
+    } catch (e) {
+      toast.error("Failed to update tent status");
+    }
+  };
+
+  const tabItems = [
+    { value: "simple", label: "My Tent", icon: <Plant size={18} weight="duotone" /> },
+    { value: "control", label: "Control Panel", icon: <Gauge size={18} weight="duotone" /> },
+    { value: "ai", label: "AI Assistant", icon: <ChatCircleDots size={18} weight="duotone" /> },
+    { value: "community", label: "Community", icon: <Users size={18} weight="duotone" /> },
+  ];
 
   return (
-    <div>
-      <header className="App-header">
-        <a
-          className="App-link"
-          href="https://emergent.sh"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <img src="https://avatars.githubusercontent.com/in/1201222?s=120&u=2686cf91179bbafbc7a71bfbc43004cf9ae1acea&v=4" />
-        </a>
-        <p className="mt-5">Building something incredible ~!</p>
+    <div className="min-h-screen" style={{ backgroundColor: "var(--ht-bg-page)" }}>
+      <Toaster position="top-right" richColors theme="light" />
+
+      {/* Header */}
+      <header className="sticky top-0 z-40 border-b" style={{ backgroundColor: "var(--ht-bg-surface)", borderColor: "rgba(19,42,27,0.1)" }}>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: "var(--ht-brand-primary)" }}>
+                <Plant size={20} weight="duotone" color="#D4FF1E" />
+              </div>
+              <h1 className="text-xl font-medium tracking-tight" style={{ fontFamily: "Outfit, sans-serif", color: "var(--ht-text-primary)" }}>
+                HydroTent
+              </h1>
+            </div>
+            <NotificationCenter
+              notifications={notifications}
+              onMarkRead={async (id) => {
+                await axios.put(`${API}/notifications/${id}/read`);
+                fetchNotifications();
+              }}
+            />
+          </div>
+        </div>
       </header>
+
+      {/* Main Content */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="w-full sm:w-auto mb-6 h-11 p-1 rounded-2xl" style={{ backgroundColor: "var(--ht-bg-secondary)" }}>
+            {tabItems.map((tab) => (
+              <TabsTrigger
+                key={tab.value}
+                value={tab.value}
+                data-testid={`tab-${tab.value}`}
+                className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-all data-[state=active]:shadow-sm"
+                style={{ fontFamily: "DM Sans, sans-serif" }}
+              >
+                {tab.icon}
+                <span className="hidden sm:inline">{tab.label}</span>
+              </TabsTrigger>
+            ))}
+          </TabsList>
+
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeTab}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.25, ease: "easeOut" }}
+            >
+              <TabsContent value="simple" className="mt-0">
+                <SimpleUI
+                  plants={plants}
+                  catalog={catalog}
+                  tentStatus={tentStatus}
+                  onAddPlant={addPlant}
+                  onRemovePlant={removePlant}
+                  onHarvestPlant={harvestPlant}
+                />
+              </TabsContent>
+
+              <TabsContent value="control" className="mt-0">
+                <ControlPanel
+                  tentStatus={tentStatus}
+                  plants={plants}
+                  onUpdateStatus={updateTentStatus}
+                />
+              </TabsContent>
+
+              <TabsContent value="ai" className="mt-0">
+                <AIAssistant />
+              </TabsContent>
+
+              <TabsContent value="community" className="mt-0">
+                <CommunityFeed />
+              </TabsContent>
+            </motion.div>
+          </AnimatePresence>
+        </Tabs>
+      </main>
     </div>
   );
 };
@@ -42,9 +222,7 @@ function App() {
     <div className="App">
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Home />}>
-            <Route index element={<Home />} />
-          </Route>
+          <Route path="/" element={<Dashboard />} />
         </Routes>
       </BrowserRouter>
     </div>
