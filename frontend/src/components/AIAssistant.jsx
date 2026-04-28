@@ -42,48 +42,133 @@ function VideoAnswerExample() {
   );
 }
 
-export default function AIAssistant() {
-  const [message, setMessage] = useState("");
-  const [model, setModel] = useState("claude");
-  const [chatHistory, setChatHistory] = useState([]);
-  const [loading, setLoading] = useState(false);
+/* ── Chat message bubble ── */
+function ChatMessage({ chat }) {
+  return (
+    <div className="space-y-2">
+      <div className="flex justify-end">
+        <div className="max-w-[85%] rounded-2xl rounded-tr-md px-3 py-2 text-xs" style={{ backgroundColor: "var(--ht-brand-primary)", color: "#fff" }}>
+          {chat.question}
+        </div>
+      </div>
+      {chat.answer ? (
+        <div className="flex justify-start">
+          <div className="max-w-[85%] rounded-2xl rounded-tl-md px-3 py-2 text-xs whitespace-pre-wrap" style={{ backgroundColor: "var(--ht-bg-secondary)", color: "var(--ht-text-primary)" }}>
+            {chat.answer}
+          </div>
+        </div>
+      ) : (
+        <div className="flex justify-start">
+          <div className="rounded-2xl rounded-tl-md px-3 py-2" style={{ backgroundColor: "var(--ht-bg-secondary)" }}>
+            <div className="flex gap-1">
+              <span className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ backgroundColor: "var(--ht-brand-primary)", animationDelay: "0ms" }} />
+              <span className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ backgroundColor: "var(--ht-brand-primary)", animationDelay: "150ms" }} />
+              <span className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ backgroundColor: "var(--ht-brand-primary)", animationDelay: "300ms" }} />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Tutorial list view ── */
+function TutorialList({ tutorials, onAdd, onDelete, onUpload }) {
+  const [showAddDialog, setShowAddDialog] = useState(false);
+  const [form, setForm] = useState({ title: "", youtube_url: "" });
+
+  const handleSave = () => {
+    if (!form.title) return;
+    onAdd(form);
+    setForm({ title: "", youtube_url: "" });
+    setShowAddDialog(false);
+  };
+
+  const getYoutubeEmbedUrl = (url) => {
+    if (!url) return null;
+    const match = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([\w-]+)/);
+    return match ? `https://www.youtube.com/embed/${match[1]}` : null;
+  };
+
+  return (
+    <ScrollArea className="flex-1">
+      <div className="p-5 space-y-3">
+        <div className="flex gap-2">
+          <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+            <DialogTrigger asChild>
+              <Button data-testid="add-tutorial-btn" size="sm" className="rounded-full text-xs h-8 px-3" style={{ backgroundColor: "var(--ht-brand-primary)", color: "#fff" }}>
+                <YoutubeLogo size={12} className="mr-1" /> Add
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="rounded-2xl" style={{ backgroundColor: "var(--ht-bg-surface)" }}>
+              <DialogHeader>
+                <DialogTitle style={{ fontFamily: "Outfit, sans-serif" }}>Add Tutorial</DialogTitle>
+                <DialogDescription className="sr-only">Add a YouTube tutorial link</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3 mt-2">
+                <Input data-testid="tutorial-title-input" placeholder="Title" value={form.title} onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))} className="rounded-xl" />
+                <Input data-testid="tutorial-url-input" placeholder="YouTube URL" value={form.youtube_url} onChange={(e) => setForm((p) => ({ ...p, youtube_url: e.target.value }))} className="rounded-xl" />
+                <Button data-testid="save-tutorial-btn" onClick={handleSave} disabled={!form.title} className="w-full rounded-xl" style={{ backgroundColor: "var(--ht-brand-primary)", color: "#fff" }}>Save</Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+          <label>
+            <input type="file" accept="video/*" className="hidden" onChange={onUpload} data-testid="video-upload-input" />
+            <Button data-testid="upload-video-btn" variant="outline" size="sm" className="rounded-full text-xs h-8 px-3 cursor-pointer" asChild>
+              <span><VideoCamera size={12} className="mr-1" /> Upload</span>
+            </Button>
+          </label>
+        </div>
+        {tutorials.length === 0 ? (
+          <p className="text-xs text-center py-8" style={{ color: "var(--ht-text-tertiary)" }}>No tutorials yet</p>
+        ) : (
+          tutorials.map((t) => (
+            <div key={t.id} className="rounded-xl border overflow-hidden" style={{ borderColor: "rgba(19,42,27,0.08)" }} data-testid={`tutorial-card-${t.id}`}>
+              {t.youtube_url && getYoutubeEmbedUrl(t.youtube_url) && (
+                <div className="aspect-video"><iframe src={getYoutubeEmbedUrl(t.youtube_url)} title={t.title} className="w-full h-full" allowFullScreen /></div>
+              )}
+              {t.video_path && (
+                <div className="aspect-video bg-black"><video src={`${API}/tutorials/video/${t.video_path}`} controls className="w-full h-full" /></div>
+              )}
+              <div className="p-3 flex items-center justify-between">
+                <span className="text-xs font-medium truncate">{t.title}</span>
+                <button onClick={() => onDelete(t.id)} style={{ color: "var(--ht-error)" }} data-testid={`delete-tutorial-${t.id}`}><Trash size={12} /></button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </ScrollArea>
+  );
+}
+
+/* ── Speech recognition hook ── */
+function useSpeechRecognition() {
   const [isListening, setIsListening] = useState(false);
-  const [showTutorials, setShowTutorials] = useState(false);
-  const [tutorials, setTutorials] = useState([]);
-  const [showAddTutorial, setShowAddTutorial] = useState(false);
-  const [tutorialForm, setTutorialForm] = useState({ title: "", youtube_url: "" });
-  const [showVideoExample, setShowVideoExample] = useState(true);
-  const chatEndRef = useRef(null);
   const recognitionRef = useRef(null);
+  const onResultRef = useRef(null);
 
-  useEffect(() => {
-    fetchHistory();
-  }, []);
-
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatHistory]);
-
-  // Setup speech recognition
   useEffect(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (SpeechRecognition) {
-      const recognition = new SpeechRecognition();
-      recognition.continuous = false;
-      recognition.interimResults = false;
-      recognition.onresult = (event) => {
-        const transcript = event.results[0][0].transcript;
-        setMessage(transcript);
-        setIsListening(false);
-      };
-      recognition.onerror = () => setIsListening(false);
-      recognition.onend = () => setIsListening(false);
-      recognitionRef.current = recognition;
-    }
-    return () => { recognitionRef.current?.abort(); };
+    if (!SpeechRecognition) return;
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      onResultRef.current?.(transcript);
+      setIsListening(false);
+    };
+    recognition.onerror = () => setIsListening(false);
+    recognition.onend = () => setIsListening(false);
+    recognitionRef.current = recognition;
+
+    return () => { recognition.abort(); };
   }, []);
 
-  const toggleListening = useCallback(() => {
+  const toggle = useCallback((onResult) => {
+    onResultRef.current = onResult;
     if (!recognitionRef.current) {
       toast.error("Voice input not supported in this browser");
       return;
@@ -97,21 +182,48 @@ export default function AIAssistant() {
     }
   }, [isListening]);
 
-  const fetchHistory = async () => {
+  return { isListening, toggle };
+}
+
+/* ── Main AIAssistant component ── */
+export default function AIAssistant() {
+  const [message, setMessage] = useState("");
+  const [model, setModel] = useState("claude");
+  const [chatHistory, setChatHistory] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [showTutorials, setShowTutorials] = useState(false);
+  const [tutorials, setTutorials] = useState([]);
+  const [showVideoExample, setShowVideoExample] = useState(true);
+  const chatEndRef = useRef(null);
+  const { isListening, toggle: toggleListening } = useSpeechRecognition();
+
+  const fetchHistory = useCallback(async () => {
     try {
       const res = await axios.get(`${API}/ai/history`);
       setChatHistory(res.data.reverse());
-    } catch (e) { console.error(e); }
-  };
+    } catch {
+      toast.error("Failed to load chat history");
+    }
+  }, []);
 
-  const fetchTutorials = async () => {
+  const fetchTutorials = useCallback(async () => {
     try {
       const res = await axios.get(`${API}/tutorials`);
       setTutorials(res.data);
-    } catch (e) { console.error(e); }
-  };
+    } catch {
+      toast.error("Failed to load tutorials");
+    }
+  }, []);
 
-  const sendMessage = async () => {
+  useEffect(() => {
+    fetchHistory();
+  }, [fetchHistory]);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatHistory]);
+
+  const sendMessage = useCallback(async () => {
     if (!message.trim() || loading) return;
     const userMsg = message.trim();
     setMessage("");
@@ -126,45 +238,38 @@ export default function AIAssistant() {
         updated[updated.length - 1] = res.data;
         return updated;
       });
-    } catch (e) {
+    } catch {
       setChatHistory((prev) => {
         const updated = [...prev];
-        updated[updated.length - 1] = {
-          ...updated[updated.length - 1],
-          answer: "Sorry, something went wrong. Try again.",
-          id: "error",
-        };
+        updated[updated.length - 1] = { ...updated[updated.length - 1], answer: "Sorry, something went wrong. Try again.", id: "error" };
         return updated;
       });
       toast.error("AI request failed");
     } finally {
       setLoading(false);
     }
-  };
+  }, [message, loading, model]);
 
-  const addTutorial = async () => {
-    if (!tutorialForm.title) return;
+  const addTutorial = useCallback(async (form) => {
     try {
-      await axios.post(`${API}/tutorials`, { ...tutorialForm, description: "", plant_type: "" });
+      await axios.post(`${API}/tutorials`, { ...form, description: "", plant_type: "" });
       toast.success("Tutorial added!");
-      setTutorialForm({ title: "", youtube_url: "" });
-      setShowAddTutorial(false);
       fetchTutorials();
-    } catch (e) {
+    } catch {
       toast.error("Failed to add tutorial");
     }
-  };
+  }, [fetchTutorials]);
 
-  const deleteTutorial = async (id) => {
+  const deleteTutorial = useCallback(async (id) => {
     try {
       await axios.delete(`${API}/tutorials/${id}`);
       fetchTutorials();
-    } catch (e) {
+    } catch {
       toast.error("Failed to delete");
     }
-  };
+  }, [fetchTutorials]);
 
-  const uploadVideo = async (e) => {
+  const uploadVideo = useCallback(async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const formData = new FormData();
@@ -175,16 +280,17 @@ export default function AIAssistant() {
       await axios.post(`${API}/tutorials/upload`, formData, { headers: { "Content-Type": "multipart/form-data" } });
       toast.success("Video uploaded!");
       fetchTutorials();
-    } catch (e) {
+    } catch {
       toast.error("Upload failed");
     }
-  };
+  }, [fetchTutorials]);
 
-  const getYoutubeEmbedUrl = (url) => {
-    if (!url) return null;
-    const match = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([\w-]+)/);
-    return match ? `https://www.youtube.com/embed/${match[1]}` : null;
-  };
+  const handleToggleTutorials = useCallback(() => {
+    setShowTutorials((prev) => {
+      if (!prev) fetchTutorials();
+      return !prev;
+    });
+  }, [fetchTutorials]);
 
   return (
     <div className="flex flex-col h-full" data-testid="ai-assistant">
@@ -201,66 +307,17 @@ export default function AIAssistant() {
         </Select>
         <Button
           data-testid="toggle-tutorials"
-          variant="ghost"
-          size="sm"
+          variant="ghost" size="sm"
           className="rounded-full text-xs h-8 ml-auto"
-          onClick={() => { setShowTutorials(!showTutorials); if (!showTutorials) fetchTutorials(); }}
+          onClick={handleToggleTutorials}
           style={{ color: "var(--ht-text-secondary)" }}
         >
-          <VideoCamera size={14} weight="duotone" className="mr-1" />
-          Videos
+          <VideoCamera size={14} weight="duotone" className="mr-1" /> Videos
         </Button>
       </div>
 
       {showTutorials ? (
-        <ScrollArea className="flex-1">
-          <div className="p-5 space-y-3">
-            <div className="flex gap-2">
-              <Dialog open={showAddTutorial} onOpenChange={setShowAddTutorial}>
-                <DialogTrigger asChild>
-                  <Button data-testid="add-tutorial-btn" size="sm" className="rounded-full text-xs h-8 px-3" style={{ backgroundColor: "var(--ht-brand-primary)", color: "#fff" }}>
-                    <YoutubeLogo size={12} className="mr-1" /> Add
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="rounded-2xl" style={{ backgroundColor: "var(--ht-bg-surface)" }}>
-                  <DialogHeader>
-                    <DialogTitle style={{ fontFamily: "Outfit, sans-serif" }}>Add Tutorial</DialogTitle>
-                    <DialogDescription className="sr-only">Add a YouTube tutorial link</DialogDescription>
-                  </DialogHeader>
-                  <div className="space-y-3 mt-2">
-                    <Input data-testid="tutorial-title-input" placeholder="Title" value={tutorialForm.title} onChange={(e) => setTutorialForm((p) => ({ ...p, title: e.target.value }))} className="rounded-xl" />
-                    <Input data-testid="tutorial-url-input" placeholder="YouTube URL" value={tutorialForm.youtube_url} onChange={(e) => setTutorialForm((p) => ({ ...p, youtube_url: e.target.value }))} className="rounded-xl" />
-                    <Button data-testid="save-tutorial-btn" onClick={addTutorial} disabled={!tutorialForm.title} className="w-full rounded-xl" style={{ backgroundColor: "var(--ht-brand-primary)", color: "#fff" }}>Save</Button>
-                  </div>
-                </DialogContent>
-              </Dialog>
-              <label>
-                <input type="file" accept="video/*" className="hidden" onChange={uploadVideo} data-testid="video-upload-input" />
-                <Button data-testid="upload-video-btn" variant="outline" size="sm" className="rounded-full text-xs h-8 px-3 cursor-pointer" asChild>
-                  <span><VideoCamera size={12} className="mr-1" /> Upload</span>
-                </Button>
-              </label>
-            </div>
-            {tutorials.length === 0 ? (
-              <p className="text-xs text-center py-8" style={{ color: "var(--ht-text-tertiary)" }}>No tutorials yet</p>
-            ) : (
-              tutorials.map((t) => (
-                <div key={t.id} className="rounded-xl border overflow-hidden" style={{ borderColor: "rgba(19,42,27,0.08)" }} data-testid={`tutorial-card-${t.id}`}>
-                  {t.youtube_url && getYoutubeEmbedUrl(t.youtube_url) && (
-                    <div className="aspect-video"><iframe src={getYoutubeEmbedUrl(t.youtube_url)} title={t.title} className="w-full h-full" allowFullScreen /></div>
-                  )}
-                  {t.video_path && (
-                    <div className="aspect-video bg-black"><video src={`${API}/tutorials/video/${t.video_path}`} controls className="w-full h-full" /></div>
-                  )}
-                  <div className="p-3 flex items-center justify-between">
-                    <span className="text-xs font-medium truncate">{t.title}</span>
-                    <button onClick={() => deleteTutorial(t.id)} style={{ color: "var(--ht-error)" }} data-testid={`delete-tutorial-${t.id}`}><Trash size={12} /></button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </ScrollArea>
+        <TutorialList tutorials={tutorials} onAdd={addTutorial} onDelete={deleteTutorial} onUpload={uploadVideo} />
       ) : (
         <>
           <ScrollArea className="flex-1">
@@ -269,98 +326,44 @@ export default function AIAssistant() {
                 <div className="space-y-4">
                   <div className="text-center">
                     <Robot size={36} weight="duotone" style={{ color: "var(--ht-brand-secondary)" }} className="mx-auto mb-2" />
-                    <p className="text-sm font-medium" style={{ fontFamily: "Outfit, sans-serif", color: "var(--ht-text-primary)" }}>
-                      Ask me anything!
-                    </p>
-                    <p className="text-xs mt-1" style={{ color: "var(--ht-text-tertiary)" }}>
-                      Type or tap the microphone to speak
-                    </p>
+                    <p className="text-sm font-medium" style={{ fontFamily: "Outfit, sans-serif", color: "var(--ht-text-primary)" }}>Ask me anything!</p>
+                    <p className="text-xs mt-1" style={{ color: "var(--ht-text-tertiary)" }}>Type or tap the microphone to speak</p>
                   </div>
-
-                  {/* Quick suggestions */}
                   <div className="flex flex-wrap gap-1.5 justify-center">
                     {["How to change water?", "When to harvest?", "What nutrients?"].map((q) => (
-                      <button
-                        key={q}
-                        onClick={() => setMessage(q)}
-                        className="text-[10px] rounded-full px-3 py-1.5 border transition-all hover:-translate-y-0.5"
-                        style={{ borderColor: "rgba(19,42,27,0.12)", color: "var(--ht-text-secondary)" }}
-                        data-testid={`suggestion-${q.slice(0, 10).replace(/\s/g, "-")}`}
-                      >
-                        {q}
-                      </button>
+                      <button key={q} onClick={() => setMessage(q)} className="text-[10px] rounded-full px-3 py-1.5 border transition-all hover:-translate-y-0.5" style={{ borderColor: "rgba(19,42,27,0.12)", color: "var(--ht-text-secondary)" }} data-testid={`suggestion-${q.slice(0, 10).replace(/\s/g, "-")}`}>{q}</button>
                     ))}
                   </div>
-
-                  {/* Example: video as an answer */}
                   <div className="space-y-2">
                     <div className="flex justify-end">
-                      <div className="rounded-2xl rounded-tr-md px-3 py-2 text-xs" style={{ backgroundColor: "var(--ht-brand-primary)", color: "#fff" }}>
-                        How do I change the water?
-                      </div>
+                      <div className="rounded-2xl rounded-tr-md px-3 py-2 text-xs" style={{ backgroundColor: "var(--ht-brand-primary)", color: "#fff" }}>How do I change the water?</div>
                     </div>
-                    <div className="flex justify-start">
-                      <div className="max-w-[90%]">
-                        <VideoAnswerExample />
-                      </div>
-                    </div>
-                    <p className="text-[9px] text-center italic" style={{ color: "var(--ht-text-tertiary)" }}>
-                      Example of how answers can include video tutorials
-                    </p>
+                    <div className="flex justify-start"><div className="max-w-[90%]"><VideoAnswerExample /></div></div>
+                    <p className="text-[9px] text-center italic" style={{ color: "var(--ht-text-tertiary)" }}>Example of how answers can include video tutorials</p>
                   </div>
                 </div>
               )}
-
               {chatHistory.length === 0 && !showVideoExample && (
                 <div className="text-center py-6">
                   <Robot size={36} weight="duotone" style={{ color: "var(--ht-brand-secondary)" }} className="mx-auto mb-2" />
                   <p className="text-xs" style={{ color: "var(--ht-text-tertiary)" }}>Ask me anything!</p>
                 </div>
               )}
-
-              {chatHistory.map((chat, i) => (
-                <div key={chat.id || i} className="space-y-2">
-                  <div className="flex justify-end">
-                    <div className="max-w-[85%] rounded-2xl rounded-tr-md px-3 py-2 text-xs" style={{ backgroundColor: "var(--ht-brand-primary)", color: "#fff" }}>
-                      {chat.question}
-                    </div>
-                  </div>
-                  {chat.answer ? (
-                    <div className="flex justify-start">
-                      <div className="max-w-[85%] rounded-2xl rounded-tl-md px-3 py-2 text-xs whitespace-pre-wrap" style={{ backgroundColor: "var(--ht-bg-secondary)", color: "var(--ht-text-primary)" }}>
-                        {chat.answer}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex justify-start">
-                      <div className="rounded-2xl rounded-tl-md px-3 py-2" style={{ backgroundColor: "var(--ht-bg-secondary)" }}>
-                        <div className="flex gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ backgroundColor: "var(--ht-brand-primary)", animationDelay: "0ms" }} />
-                          <span className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ backgroundColor: "var(--ht-brand-primary)", animationDelay: "150ms" }} />
-                          <span className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ backgroundColor: "var(--ht-brand-primary)", animationDelay: "300ms" }} />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
+              {chatHistory.map((chat) => (
+                <ChatMessage key={chat.id} chat={chat} />
               ))}
               <div ref={chatEndRef} />
             </div>
           </ScrollArea>
 
-          {/* Input area */}
           <div className="px-5 py-3 border-t" style={{ borderColor: "rgba(19,42,27,0.06)" }}>
             <div className="flex gap-2">
-              {/* Mic button */}
               <Button
                 data-testid="voice-input-btn"
-                onClick={toggleListening}
+                onClick={() => toggleListening(setMessage)}
                 variant="ghost"
                 className="rounded-full h-9 w-9 p-0 flex-shrink-0 transition-all"
-                style={{
-                  backgroundColor: isListening ? "rgba(211,63,73,0.12)" : "transparent",
-                  color: isListening ? "var(--ht-error)" : "var(--ht-text-tertiary)",
-                }}
+                style={{ backgroundColor: isListening ? "rgba(211,63,73,0.12)" : "transparent", color: isListening ? "var(--ht-error)" : "var(--ht-text-tertiary)" }}
               >
                 {isListening ? <MicrophoneSlash size={18} weight="fill" /> : <Microphone size={18} weight="duotone" />}
               </Button>
@@ -385,9 +388,7 @@ export default function AIAssistant() {
               </Button>
             </div>
             {isListening && (
-              <p className="text-[10px] text-center mt-1.5 animate-pulse" style={{ color: "var(--ht-error)" }}>
-                Listening... speak now
-              </p>
+              <p className="text-[10px] text-center mt-1.5 animate-pulse" style={{ color: "var(--ht-error)" }}>Listening... speak now</p>
             )}
           </div>
         </>

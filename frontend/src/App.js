@@ -1,9 +1,8 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import "@/App.css";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import axios from "axios";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Toaster, toast } from "sonner";
+import { Toaster } from "sonner";
 import { Plant, Gauge, Users, ChatCircleDots, X } from "@phosphor-icons/react";
 import { motion, AnimatePresence } from "framer-motion";
 import SimpleUI from "@/components/SimpleUI";
@@ -11,72 +10,21 @@ import ControlPanel from "@/components/ControlPanel";
 import AIAssistant from "@/components/AIAssistant";
 import CommunityFeed from "@/components/CommunityFeed";
 import NotificationCenter from "@/components/NotificationCenter";
+import { usePlantActions, useTentStatus, useNotifications } from "@/hooks/useHydroTent";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
+const TAB_ITEMS = [
+  { value: "simple", label: "My Tent", icon: <Plant size={18} weight="duotone" /> },
+  { value: "control", label: "Control Panel", icon: <Gauge size={18} weight="duotone" /> },
+  { value: "community", label: "Community", icon: <Users size={18} weight="duotone" /> },
+];
 
 const Dashboard = () => {
   const [activeTab, setActiveTab] = useState("simple");
-  const [plants, setPlants] = useState([]);
-  const [catalog, setCatalog] = useState([]);
-  const [tentStatus, setTentStatus] = useState(null);
-  const [notifications, setNotifications] = useState([]);
   const [showAI, setShowAI] = useState(false);
 
-  const fetchPlants = useCallback(async () => {
-    try {
-      const res = await axios.get(`${API}/plants`);
-      setPlants(res.data);
-    } catch (e) { console.error("Failed to fetch plants", e); }
-  }, []);
-
-  const fetchCatalog = useCallback(async () => {
-    try {
-      const res = await axios.get(`${API}/plants/catalog`);
-      setCatalog(res.data);
-    } catch (e) { console.error("Failed to fetch catalog", e); }
-  }, []);
-
-  const fetchTentStatus = useCallback(async () => {
-    try {
-      const res = await axios.get(`${API}/tent/status`);
-      setTentStatus(res.data);
-    } catch (e) { console.error("Failed to fetch tent status", e); }
-  }, []);
-
-  const fetchNotifications = useCallback(async () => {
-    try {
-      const res = await axios.get(`${API}/notifications`);
-      setNotifications(res.data);
-    } catch (e) { console.error("Failed to fetch notifications", e); }
-  }, []);
-
-  const checkNotifications = useCallback(async () => {
-    try {
-      const res = await axios.post(`${API}/notifications/check`);
-      if (res.data.count > 0) {
-        fetchNotifications();
-        res.data.new_notifications.forEach((n) => {
-          toast(n.message, {
-            style: {
-              borderLeft: `4px solid ${
-                n.type === "harvest_ready" ? "#FF6B35" :
-                n.type === "low_water" ? "#4A90E2" :
-                n.type === "low_nutrients" ? "#8D6B94" : "#D33F49"
-              }`,
-            },
-          });
-        });
-      }
-    } catch (e) { console.error("Failed to check notifications", e); }
-  }, [fetchNotifications]);
-
-  useEffect(() => {
-    fetchCatalog();
-    fetchPlants();
-    fetchTentStatus();
-    fetchNotifications();
-  }, [fetchCatalog, fetchPlants, fetchTentStatus, fetchNotifications]);
+  const { plants, catalog, addPlant, removePlant, harvestPlant } = usePlantActions();
+  const { tentStatus, updateTentStatus, fetchTentStatus } = useTentStatus();
+  const { notifications, checkNotifications, markNotificationRead } = useNotifications();
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -85,54 +33,6 @@ const Dashboard = () => {
     }, 60000);
     return () => clearInterval(interval);
   }, [checkNotifications, fetchTentStatus]);
-
-  const addPlant = async (catalogId, nickname) => {
-    try {
-      const res = await axios.post(`${API}/plants`, { catalog_id: catalogId, nickname });
-      setPlants((prev) => [...prev, res.data]);
-      toast.success(`${res.data.name} added to your tent!`);
-    } catch (e) {
-      const msg = e.response?.data?.detail || "Failed to add plant";
-      toast.error(msg);
-    }
-  };
-
-  const removePlant = async (plantId) => {
-    try {
-      await axios.delete(`${API}/plants/${plantId}`);
-      setPlants((prev) => prev.filter((p) => p.id !== plantId));
-      toast("Plant removed from tent");
-    } catch (e) {
-      toast.error("Failed to remove plant");
-    }
-  };
-
-  const harvestPlant = async (plantId) => {
-    try {
-      const res = await axios.put(`${API}/plants/${plantId}/harvest`);
-      setPlants((prev) => prev.map((p) => (p.id === plantId ? res.data : p)));
-      toast.success("Harvest logged!", {
-        style: { borderLeft: "4px solid #FF6B35" },
-      });
-    } catch (e) {
-      toast.error("Failed to harvest plant");
-    }
-  };
-
-  const updateTentStatus = async (newStatus) => {
-    try {
-      const res = await axios.put(`${API}/tent/status`, newStatus);
-      setTentStatus(res.data);
-    } catch (e) {
-      toast.error("Failed to update tent status");
-    }
-  };
-
-  const tabItems = [
-    { value: "simple", label: "My Tent", icon: <Plant size={18} weight="duotone" /> },
-    { value: "control", label: "Control Panel", icon: <Gauge size={18} weight="duotone" /> },
-    { value: "community", label: "Community", icon: <Users size={18} weight="duotone" /> },
-  ];
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: "var(--ht-bg-page)" }}>
@@ -150,13 +50,7 @@ const Dashboard = () => {
                 HydroTent
               </h1>
             </div>
-            <NotificationCenter
-              notifications={notifications}
-              onMarkRead={async (id) => {
-                await axios.put(`${API}/notifications/${id}/read`);
-                fetchNotifications();
-              }}
-            />
+            <NotificationCenter notifications={notifications} onMarkRead={markNotificationRead} />
           </div>
         </div>
       </header>
@@ -165,7 +59,7 @@ const Dashboard = () => {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="w-full sm:w-auto mb-6 h-11 p-1 rounded-2xl" style={{ backgroundColor: "var(--ht-bg-secondary)" }}>
-            {tabItems.map((tab) => (
+            {TAB_ITEMS.map((tab) => (
               <TabsTrigger
                 key={tab.value}
                 value={tab.value}
@@ -196,19 +90,12 @@ const Dashboard = () => {
                   onAddPlant={addPlant}
                   onRemovePlant={removePlant}
                   onHarvestPlant={harvestPlant}
-                  onMarkNotificationRead={async (id) => {
-                    await axios.put(`${API}/notifications/${id}/read`);
-                    fetchNotifications();
-                  }}
+                  onMarkNotificationRead={markNotificationRead}
                 />
               </TabsContent>
 
               <TabsContent value="control" className="mt-0">
-                <ControlPanel
-                  tentStatus={tentStatus}
-                  plants={plants}
-                  onUpdateStatus={updateTentStatus}
-                />
+                <ControlPanel tentStatus={tentStatus} plants={plants} onUpdateStatus={updateTentStatus} />
               </TabsContent>
 
               <TabsContent value="community" className="mt-0">
@@ -224,11 +111,7 @@ const Dashboard = () => {
         data-testid="ai-fab-button"
         onClick={() => setShowAI(true)}
         className="fixed bottom-20 right-6 z-50 w-14 h-14 rounded-full flex items-center justify-center transition-all hover:scale-110 active:scale-95"
-        style={{
-          backgroundColor: "var(--ht-brand-accent)",
-          boxShadow: "0 4px 20px rgba(212,255,30,0.4)",
-          color: "var(--ht-text-primary)",
-        }}
+        style={{ backgroundColor: "var(--ht-brand-accent)", boxShadow: "0 4px 20px rgba(212,255,30,0.4)", color: "var(--ht-text-primary)" }}
       >
         <ChatCircleDots size={26} weight="duotone" />
       </button>

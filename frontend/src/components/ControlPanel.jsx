@@ -89,8 +89,8 @@ export default function ControlPanel({ tentStatus, plants, onUpdateStatus }) {
       {/* Warnings */}
       {warnings.length > 0 && (
         <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="space-y-2">
-          {warnings.map((w, i) => (
-            <div key={i} className="flex items-center gap-3 rounded-2xl border-l-4 p-4"
+          {warnings.map((w) => (
+            <div key={w.msg} className="flex items-center gap-3 rounded-2xl border-l-4 p-4"
               style={{ backgroundColor: "var(--ht-bg-surface)", borderLeftColor: w.color }}>
               <Warning size={20} weight="duotone" style={{ color: w.color }} />
               <span className="text-sm font-medium" style={{ color: "var(--ht-text-primary)" }}>{w.msg}</span>
@@ -161,7 +161,7 @@ export default function ControlPanel({ tentStatus, plants, onUpdateStatus }) {
               <div className="flex gap-1 mx-1">
                 {Array.from({ length: 5 }).map((_, i) => (
                   <div
-                    key={i}
+                    key={`ph-seg-${i}`}
                     className="w-3 h-6 rounded-sm transition-all duration-300"
                     style={{
                       backgroundColor: i < (status.ph_pump_level || 0) ? "var(--ht-brand-primary)" : "var(--ht-bg-secondary)",

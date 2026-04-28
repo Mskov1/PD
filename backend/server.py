@@ -220,87 +220,75 @@ async def mark_notification_read(notif_id: str):
     await db.notifications.update_one({"id": notif_id}, {"$set": {"read": True}})
     return {"message": "Marked as read"}
 
+async def _create_notif(notif_type, message, severity, plant_id, now):
+    """Create and insert a notification if no unread one of same type exists."""
+    query = {"type": notif_type, "read": False}
+    if plant_id:
+        query["plant_id"] = plant_id
+    existing = await db.notifications.find_one(query)
+    if existing:
+        return None
+    notif = {
+        "id": str(uuid.uuid4()),
+        "type": notif_type,
+        "message": message,
+        "severity": severity,
+        "plant_id": plant_id,
+        "created_at": now.isoformat(),
+        "read": False,
+    }
+    await db.notifications.insert_one(notif)
+    notif.pop("_id", None)
+    return notif
+
+
+async def _check_harvest_notifications(plants, now):
+    """Check plants for harvest-ready and harvest-soon notifications."""
+    notifs = []
+    for plant in plants:
+        planted_at = datetime.fromisoformat(plant["planted_at"])
+        days_left = plant["days_to_harvest"] - (now - planted_at).days
+        name = plant.get("nickname", plant["name"])
+
+        if days_left <= 0:
+            n = await _create_notif("harvest_ready", f"{name} is ready to harvest!", "success", plant["id"], now)
+            if n:
+                notifs.append(n)
+        elif days_left <= 3:
+            n = await _create_notif("harvest_soon", f"{name} will be ready in {days_left} days", "info", plant["id"], now)
+            if n:
+                notifs.append(n)
+    return notifs
+
+
+async def _check_water_notifications(tent, now):
+    """Check water and nutrient levels for low-level notifications."""
+    notifs = []
+    if not tent:
+        return notifs
+    water = tent.get("water_level", 75)
+    nutrient = tent.get("nutrient_level", 60)
+    if water < 30:
+        n = await _create_notif("low_water", "Water level is low — refill needed", "warning", None, now)
+        if n:
+            notifs.append(n)
+    if nutrient < 25:
+        n = await _create_notif("low_nutrients", "Nutrients running low — top up", "warning", None, now)
+        if n:
+            notifs.append(n)
+    return notifs
+
+
 @api_router.post("/notifications/check")
 async def check_notifications():
     plants = await db.plants.find({"status": "growing"}, {"_id": 0}).to_list(100)
     tent = await db.tent_status.find_one({"key": "current"}, {"_id": 0})
-    new_notifs = []
     now = datetime.now(timezone.utc)
-    
-    for plant in plants:
-        planted_at = datetime.fromisoformat(plant["planted_at"])
-        days_elapsed = (now - planted_at).days
-        days_left = plant["days_to_harvest"] - days_elapsed
-        
-        if days_left <= 0:
-            existing = await db.notifications.find_one({
-                "plant_id": plant["id"], "type": "harvest_ready", "read": False
-            })
-            if not existing:
-                notif = {
-                    "id": str(uuid.uuid4()),
-                    "type": "harvest_ready",
-                    "message": f"{plant.get('nickname', plant['name'])} is ready to harvest!",
-                    "severity": "success",
-                    "plant_id": plant["id"],
-                    "created_at": now.isoformat(),
-                    "read": False,
-                }
-                await db.notifications.insert_one(notif)
-                notif.pop("_id", None)
-                new_notifs.append(notif)
-        elif days_left <= 3:
-            existing = await db.notifications.find_one({
-                "plant_id": plant["id"], "type": "harvest_soon", "read": False
-            })
-            if not existing:
-                notif = {
-                    "id": str(uuid.uuid4()),
-                    "type": "harvest_soon",
-                    "message": f"{plant.get('nickname', plant['name'])} will be ready in {days_left} days",
-                    "severity": "info",
-                    "plant_id": plant["id"],
-                    "created_at": now.isoformat(),
-                    "read": False,
-                }
-                await db.notifications.insert_one(notif)
-                notif.pop("_id", None)
-                new_notifs.append(notif)
 
-    if tent:
-        water = tent.get("water_level", 75)
-        nutrient = tent.get("nutrient_level", 60)
-        if water < 30:
-            existing = await db.notifications.find_one({"type": "low_water", "read": False})
-            if not existing:
-                notif = {
-                    "id": str(uuid.uuid4()),
-                    "type": "low_water",
-                    "message": f"Water level is low — refill needed",
-                    "severity": "warning",
-                    "plant_id": None,
-                    "created_at": now.isoformat(),
-                    "read": False,
-                }
-                await db.notifications.insert_one(notif)
-                notif.pop("_id", None)
-                new_notifs.append(notif)
-        if nutrient < 25:
-            existing = await db.notifications.find_one({"type": "low_nutrients", "read": False})
-            if not existing:
-                notif = {
-                    "id": str(uuid.uuid4()),
-                    "type": "low_nutrients",
-                    "message": "Nutrients running low — top up",
-                    "severity": "warning",
-                    "plant_id": None,
-                    "created_at": now.isoformat(),
-                    "read": False,
-                }
-                await db.notifications.insert_one(notif)
-                notif.pop("_id", None)
-                new_notifs.append(notif)
-    
+    harvest_notifs = await _check_harvest_notifications(plants, now)
+    water_notifs = await _check_water_notifications(tent, now)
+    new_notifs = harvest_notifs + water_notifs
+
     return {"new_notifications": new_notifs, "count": len(new_notifs)}
 
 # ==================== AI CHAT ROUTES ====================

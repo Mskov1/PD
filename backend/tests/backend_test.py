@@ -198,8 +198,8 @@ class TestTent:
         r = api_client.get(f"{API}/tent/status")
         data = r.json()
         assert data["temperature"] == 24.0
-        assert data["light_on"] is False
-        assert data["fan_on"] is True
+        assert data["light_on"] == False
+        assert data["fan_on"] == True
         assert data["ph_pump_level"] == 4
 
         # Toggle light_on to true and verify
@@ -208,7 +208,7 @@ class TestTent:
         r = api_client.put(f"{API}/tent/status", json=payload)
         assert r.status_code == 200
         data = r.json()
-        assert data["light_on"] is True
+        assert data["light_on"] == True
         assert data["ph_pump_level"] == 2
 
 

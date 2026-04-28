@@ -18,7 +18,7 @@ export default function PlantCard({ plant, onRemove, onHarvest }) {
     const left = Math.max(0, plant.days_to_harvest - elapsed);
     const prog = Math.min(100, (elapsed / plant.days_to_harvest) * 100);
     return { daysElapsed: elapsed, daysLeft: left, progress: prog, isReady: left <= 0 };
-  }, [plant]);
+  }, [plant.planted_at, plant.days_to_harvest]);
 
   const isHarvested = plant.status === "harvested";
   const IconComponent = ICON_MAP[plant.icon] || Plant;

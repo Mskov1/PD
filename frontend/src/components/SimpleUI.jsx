@@ -19,7 +19,7 @@ function LevelIndicator({ level, color, label, icon: Icon }) {
       <div className="flex gap-0.5">
         {Array.from({ length: segments }).map((_, i) => (
           <div
-            key={i}
+            key={`seg-${i}`}
             className="w-4 h-2.5 rounded-sm transition-all duration-300"
             style={{
               backgroundColor: i < filled ? color : "var(--ht-bg-secondary)",
@@ -333,7 +333,7 @@ export default function SimpleUI({ plants, catalog, tentStatus, notifications, o
       {/* ── Plant Rows ── */}
       <div className="space-y-3">
         {rows.map((row, ri) => (
-          <div key={ri} className="grid grid-cols-1 sm:grid-cols-2 gap-3" data-testid={`tent-row-${ri}`}>
+          <div key={`row-${ri}`} className="grid grid-cols-1 sm:grid-cols-2 gap-3" data-testid={`tent-row-${ri}`}>
             {row.map((plant, ci) => (
               <PlantSlot
                 key={plant?.id || `empty-${ri}-${ci}`}

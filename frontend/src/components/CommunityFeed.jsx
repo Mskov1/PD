@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import axios from "axios";
+import { toast } from "sonner";
 import { Plant, Trophy, Clock } from "@phosphor-icons/react";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -9,16 +10,18 @@ const API = `${BACKEND_URL}/api`;
 export default function CommunityFeed() {
   const [feed, setFeed] = useState([]);
 
-  useEffect(() => {
-    fetchFeed();
-  }, []);
-
-  const fetchFeed = async () => {
+  const fetchFeed = useCallback(async () => {
     try {
       const res = await axios.get(`${API}/community/feed`);
       setFeed(res.data);
-    } catch (e) { console.error(e); }
-  };
+    } catch {
+      toast.error("Failed to load community feed");
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchFeed();
+  }, [fetchFeed]);
 
   const timeAgo = (dateStr) => {
     const diff = Date.now() - new Date(dateStr).getTime();
