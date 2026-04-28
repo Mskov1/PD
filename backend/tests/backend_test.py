@@ -81,6 +81,38 @@ class TestPlants:
         r = api_client.post(f"{API}/plants", json={"catalog_id": "nonexistent"})
         assert r.status_code == 404
 
+    def test_create_duplicate_plant_type_allowed(self, api_client):
+        """v3: Allow adding multiples of the same plant type."""
+        # Free slots: temporarily delete TestPlants.plant_id (created in test_create_plant)
+        freed = []
+        if TestPlants.plant_id:
+            r = api_client.delete(f"{API}/plants/{TestPlants.plant_id}")
+            if r.status_code == 200:
+                freed.append(TestPlants.plant_id)
+                TestPlants.plant_id = None
+
+        ids = []
+        try:
+            plants = api_client.get(f"{API}/plants").json()
+            growing = [p for p in plants if p.get("status") == "growing"]
+            if len(growing) > 4:
+                pytest.skip(f"Need >=2 free slots; only {6 - len(growing)} free")
+            for i in range(2):
+                r = api_client.post(f"{API}/plants", json={"catalog_id": "basil", "nickname": f"TEST_DupBasil{i}"})
+                assert r.status_code == 200, f"duplicate basil add failed: {r.status_code} {r.text}"
+                assert r.json()["catalog_id"] == "basil"
+                ids.append(r.json()["id"])
+            plants = api_client.get(f"{API}/plants").json()
+            present = [p for p in plants if p["id"] in ids and p["status"] == "growing"]
+            assert len(present) == 2, "Both duplicate basils should be growing"
+        finally:
+            for pid in ids:
+                api_client.delete(f"{API}/plants/{pid}")
+            if freed and TestPlants.plant_id is None:
+                r = api_client.post(f"{API}/plants", json={"catalog_id": "lettuce", "nickname": "TEST_Lettuce"})
+                if r.status_code == 200:
+                    TestPlants.plant_id = r.json()["id"]
+
     def test_get_plants(self, api_client):
         r = api_client.get(f"{API}/plants")
         assert r.status_code == 200
@@ -89,9 +121,26 @@ class TestPlants:
         assert any(p["id"] == TestPlants.plant_id for p in data)
 
     def test_harvest_plant(self, api_client):
-        # Create a plant to harvest
+        # Reuse the plant created in test_create_plant to avoid hitting MAX_PLANTS
+        # We'll create a separate plant for harvest, but first free up a slot if needed
+        plants = api_client.get(f"{API}/plants").json()
+        growing = [p for p in plants if p.get("status") == "growing"]
+        # If at capacity, harvest TestPlants.plant_id directly
+        if len(growing) >= 6:
+            assert TestPlants.plant_id is not None
+            # Re-fetch and harvest the test plant
+            r = api_client.put(f"{API}/plants/{TestPlants.plant_id}/harvest")
+            assert r.status_code == 200, r.text
+            data = r.json()
+            assert data["status"] == "harvested"
+            # Recreate a plant for downstream test_delete_plant
+            r2 = api_client.post(f"{API}/plants", json={"catalog_id": "lettuce", "nickname": "TEST_Lettuce2"})
+            if r2.status_code == 200:
+                TestPlants.plant_id = r2.json()["id"]
+            return
+
         r = api_client.post(f"{API}/plants", json={"catalog_id": "basil", "nickname": "TEST_HarvestBasil"})
-        assert r.status_code == 200
+        assert r.status_code == 200, r.text
         pid = r.json()["id"]
 
         r = api_client.put(f"{API}/plants/{pid}/harvest")
@@ -104,6 +153,8 @@ class TestPlants:
         assert r.status_code == 200
         feed = r.json()
         assert any(e.get("nickname") == "TEST_HarvestBasil" for e in feed)
+        # Cleanup the harvested plant
+        api_client.delete(f"{API}/plants/{pid}")
 
     def test_harvest_nonexistent(self, api_client):
         r = api_client.put(f"{API}/plants/does-not-exist/harvest")
@@ -128,13 +179,18 @@ class TestTent:
         r = api_client.get(f"{API}/tent/status")
         assert r.status_code == 200
         data = r.json()
-        for k in ["temperature", "humidity", "water_level", "nutrient_level", "ph_level", "light_hours", "fan_speed"]:
-            assert k in data
+        # v3 fields: light_on (bool), fan_on (bool), ph_pump_level (int)
+        for k in ["temperature", "humidity", "water_level", "nutrient_level", "ph_level", "light_on", "fan_on", "ph_pump_level"]:
+            assert k in data, f"missing field {k} in tent status"
+        assert isinstance(data["light_on"], bool)
+        assert isinstance(data["fan_on"], bool)
+        assert isinstance(data["ph_pump_level"], int)
 
     def test_update_status(self, api_client):
         payload = {
             "temperature": 24.0, "humidity": 70.0, "water_level": 80.0,
-            "nutrient_level": 65.0, "ph_level": 6.5, "light_hours": 14, "fan_speed": 3,
+            "nutrient_level": 65.0, "ph_level": 6.5,
+            "light_on": False, "fan_on": True, "ph_pump_level": 4,
         }
         r = api_client.put(f"{API}/tent/status", json=payload)
         assert r.status_code == 200
@@ -142,8 +198,18 @@ class TestTent:
         r = api_client.get(f"{API}/tent/status")
         data = r.json()
         assert data["temperature"] == 24.0
-        assert data["light_hours"] == 14
-        assert data["fan_speed"] == 3
+        assert data["light_on"] is False
+        assert data["fan_on"] is True
+        assert data["ph_pump_level"] == 4
+
+        # Toggle light_on to true and verify
+        payload["light_on"] = True
+        payload["ph_pump_level"] = 2
+        r = api_client.put(f"{API}/tent/status", json=payload)
+        assert r.status_code == 200
+        data = r.json()
+        assert data["light_on"] is True
+        assert data["ph_pump_level"] == 2
 
 
 # ==================== NOTIFICATIONS ====================
@@ -154,23 +220,38 @@ class TestNotifications:
         assert isinstance(r.json(), list)
 
     def test_check_notifications_low_water(self, api_client):
-        # Force low water
+        # Cleanup pre-existing low_water/low_nutrients to ensure dedup test is meaningful
+        # Force low water + low nutrients
         api_client.put(f"{API}/tent/status", json={
             "temperature": 22.0, "humidity": 60.0, "water_level": 10.0,
-            "nutrient_level": 15.0, "ph_level": 6.2, "light_hours": 16, "fan_speed": 2,
+            "nutrient_level": 15.0, "ph_level": 6.2,
+            "light_on": True, "fan_on": True, "ph_pump_level": 3,
         })
-        r = api_client.post(f"{API}/notifications/check")
-        assert r.status_code == 200
-        data = r.json()
-        assert "new_notifications" in data
-        assert "count" in data
-        types = {n["type"] for n in data["new_notifications"]}
-        assert "low_water" in types or "low_nutrients" in types
+        # Mark all existing low_water/low_nutrients as read so we get a clean slate
+        existing = api_client.get(f"{API}/notifications").json()
+        for n in existing:
+            if n["type"] in ("low_water", "low_nutrients") and not n.get("read"):
+                api_client.put(f"{API}/notifications/{n['id']}/read")
+
+        # First check creates new notifications
+        r1 = api_client.post(f"{API}/notifications/check")
+        assert r1.status_code == 200
+        types1 = {n["type"] for n in r1.json()["new_notifications"]}
+        # Either or both should be created
+        assert types1 & {"low_water", "low_nutrients"}, f"Expected low_water/low_nutrients in {types1}"
+
+        # v3 dedup: second check should NOT create low_water/low_nutrients again
+        r2 = api_client.post(f"{API}/notifications/check")
+        assert r2.status_code == 200
+        types2 = {n["type"] for n in r2.json()["new_notifications"]}
+        assert "low_water" not in types2, "low_water duplicate created (dedup broken)"
+        assert "low_nutrients" not in types2, "low_nutrients duplicate created (dedup broken)"
 
         # Restore
         api_client.put(f"{API}/tent/status", json={
             "temperature": 22.5, "humidity": 65.0, "water_level": 75.0,
-            "nutrient_level": 60.0, "ph_level": 6.2, "light_hours": 16, "fan_speed": 2,
+            "nutrient_level": 60.0, "ph_level": 6.2,
+            "light_on": True, "fan_on": True, "ph_pump_level": 3,
         })
 
 

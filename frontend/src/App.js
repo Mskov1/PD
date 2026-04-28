@@ -192,9 +192,14 @@ const Dashboard = () => {
                   plants={plants}
                   catalog={catalog}
                   tentStatus={tentStatus}
+                  notifications={notifications}
                   onAddPlant={addPlant}
                   onRemovePlant={removePlant}
                   onHarvestPlant={harvestPlant}
+                  onMarkNotificationRead={async (id) => {
+                    await axios.put(`${API}/notifications/${id}/read`);
+                    fetchNotifications();
+                  }}
                 />
               </TabsContent>
 

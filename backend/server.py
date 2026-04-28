@@ -94,8 +94,9 @@ class TentStatus(BaseModel):
     water_level: float = 75.0
     nutrient_level: float = 60.0
     ph_level: float = 6.2
-    light_hours: int = 16
-    fan_speed: int = 2
+    light_on: bool = True
+    fan_on: bool = True
+    ph_pump_level: int = 3
 
 class NotificationResponse(BaseModel):
     id: str

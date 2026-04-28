@@ -1,13 +1,42 @@
 import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogClose, DialogDescription } from "@/components/ui/dialog";
-import { Plus, Drop, Flask, Scissors, Trash, Warning, Plant, Timer } from "@phosphor-icons/react";
+import { Plus, Scissors, Trash, Warning, Plant, Drop, Flask, Bell } from "@phosphor-icons/react";
 
 const MAX_SLOTS = 6;
 
-function PlantSlot({ plant, index, onHarvest, onRemove, catalog }) {
+/* ── Simple visual level bar (no numbers) ── */
+function LevelIndicator({ level, color, label, icon: Icon }) {
+  const segments = 5;
+  const filled = Math.round((level / 100) * segments);
+  const isLow = level < 30;
+
+  return (
+    <div className="flex items-center gap-2">
+      <Icon size={18} weight="duotone" style={{ color }} />
+      <span className="text-[10px] font-medium w-14" style={{ color: "var(--ht-text-secondary)" }}>{label}</span>
+      <div className="flex gap-0.5">
+        {Array.from({ length: segments }).map((_, i) => (
+          <div
+            key={i}
+            className="w-4 h-2.5 rounded-sm transition-all duration-300"
+            style={{
+              backgroundColor: i < filled ? color : "var(--ht-bg-secondary)",
+              opacity: i < filled ? (isLow ? 1 : 0.8) : 0.4,
+            }}
+          />
+        ))}
+      </div>
+      {isLow && (
+        <Warning size={14} weight="fill" style={{ color: "var(--ht-error)" }} className="animate-pulse" />
+      )}
+    </div>
+  );
+}
+
+/* ── Single plant slot ── */
+function PlantSlot({ plant, index, onHarvest, onRemove }) {
   const lifecycle = useMemo(() => {
     if (!plant) return null;
     const planted = new Date(plant.planted_at);
@@ -47,7 +76,6 @@ function PlantSlot({ plant, index, onHarvest, onRemove, catalog }) {
         opacity: isHarvested ? 0.5 : 1,
       }}
     >
-      {/* Plant image */}
       <div className="w-14 h-14 rounded-xl overflow-hidden flex-shrink-0 border" style={{ borderColor: "rgba(19,42,27,0.08)" }}>
         {plant.image ? (
           <img src={plant.image} alt={plant.name} className="w-full h-full object-cover" />
@@ -58,15 +86,14 @@ function PlantSlot({ plant, index, onHarvest, onRemove, catalog }) {
         )}
       </div>
 
-      {/* Info */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium truncate" style={{ fontFamily: "Outfit, sans-serif", color: "var(--ht-text-primary)" }}>
             {plant.nickname || plant.name}
           </span>
           {isReady && (
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: "rgba(255,107,53,0.12)", color: "var(--ht-harvest)" }}>
-              Ready
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse" style={{ backgroundColor: "rgba(255,107,53,0.15)", color: "var(--ht-harvest)" }}>
+              Ready!
             </span>
           )}
           {isHarvested && (
@@ -93,7 +120,6 @@ function PlantSlot({ plant, index, onHarvest, onRemove, catalog }) {
         )}
       </div>
 
-      {/* Actions */}
       <div className="flex items-center gap-1 flex-shrink-0">
         {isReady && onHarvest && (
           <Button
@@ -122,7 +148,8 @@ function PlantSlot({ plant, index, onHarvest, onRemove, catalog }) {
   );
 }
 
-export default function SimpleUI({ plants, catalog, tentStatus, onAddPlant, onRemovePlant, onHarvestPlant }) {
+/* ── Main Component ── */
+export default function SimpleUI({ plants, catalog, tentStatus, notifications, onAddPlant, onRemovePlant, onHarvestPlant, onMarkNotificationRead }) {
   const [selectedPlant, setSelectedPlant] = useState("");
   const [showAddDialog, setShowAddDialog] = useState(false);
 
@@ -136,63 +163,107 @@ export default function SimpleUI({ plants, catalog, tentStatus, onAddPlant, onRe
     setShowAddDialog(false);
   };
 
-  // Critical alerts - only show when action is needed
-  const alerts = [];
-  if (tentStatus) {
-    if (tentStatus.water_level < 30) {
-      alerts.push({ key: "water", icon: Drop, message: "Water level is low — refill needed", color: "var(--ht-water)", bg: "rgba(74,144,226,0.08)" });
-    }
-    if (tentStatus.nutrient_level < 30) {
-      alerts.push({ key: "nutrient", icon: Flask, message: "Nutrients running low — top up", color: "var(--ht-nutrition)", bg: "rgba(141,107,148,0.08)" });
-    }
-  }
+  // Unread notifications for display
+  const unreadNotifs = (notifications || []).filter((n) => !n.read).slice(0, 3);
 
-  const readyPlants = growingPlants.filter((p) => {
-    const elapsed = Math.floor((Date.now() - new Date(p.planted_at).getTime()) / (1000 * 60 * 60 * 24));
-    return p.days_to_harvest - elapsed <= 0;
-  });
-
-  if (readyPlants.length > 0) {
-    alerts.push({ key: "harvest", icon: Scissors, message: `${readyPlants.length} plant${readyPlants.length > 1 ? "s" : ""} ready to harvest`, color: "var(--ht-harvest)", bg: "rgba(255,107,53,0.08)" });
-  }
-
-  // Build slot rows: 3 rows of 2
+  // Build slot rows
   const slots = [];
   for (let i = 0; i < MAX_SLOTS; i++) {
     slots.push(growingPlants[i] || null);
   }
   const rows = [slots.slice(0, 2), slots.slice(2, 4), slots.slice(4, 6)];
 
+  const waterLow = tentStatus && tentStatus.water_level < 30;
+  const nutrientLow = tentStatus && tentStatus.nutrient_level < 30;
+
   return (
-    <div className="space-y-6" data-testid="simple-ui">
-      {/* Action Alerts */}
+    <div className="space-y-5" data-testid="simple-ui">
+
+      {/* ── Big Warning Banners ── */}
       <AnimatePresence>
-        {alerts.map((alert) => (
+        {waterLow && (
           <motion.div
-            key={alert.key}
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            className="flex items-center gap-3 rounded-2xl p-4 border-l-4"
-            style={{ backgroundColor: alert.bg, borderLeftColor: alert.color }}
-            data-testid={`alert-${alert.key}`}
+            key="water-warn"
+            initial={{ opacity: 0, y: -10, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="rounded-2xl p-5 flex items-center gap-4 border-l-4"
+            style={{ backgroundColor: "rgba(74,144,226,0.1)", borderLeftColor: "var(--ht-water)" }}
+            data-testid="alert-water"
           >
-            <alert.icon size={20} weight="duotone" style={{ color: alert.color }} />
-            <span className="text-sm font-medium flex-1" style={{ color: "var(--ht-text-primary)" }}>{alert.message}</span>
-            <Warning size={16} weight="fill" style={{ color: alert.color, opacity: 0.6 }} />
+            <div className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 animate-pulse" style={{ backgroundColor: "rgba(74,144,226,0.15)" }}>
+              <Drop size={26} weight="fill" style={{ color: "var(--ht-water)" }} />
+            </div>
+            <div>
+              <p className="text-sm font-bold" style={{ fontFamily: "Outfit, sans-serif", color: "var(--ht-text-primary)" }}>Water is running low</p>
+              <p className="text-xs mt-0.5" style={{ color: "var(--ht-text-secondary)" }}>Refill the water tank soon</p>
+            </div>
           </motion.div>
-        ))}
+        )}
+        {nutrientLow && (
+          <motion.div
+            key="nutrient-warn"
+            initial={{ opacity: 0, y: -10, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="rounded-2xl p-5 flex items-center gap-4 border-l-4"
+            style={{ backgroundColor: "rgba(141,107,148,0.1)", borderLeftColor: "var(--ht-nutrition)" }}
+            data-testid="alert-nutrient"
+          >
+            <div className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 animate-pulse" style={{ backgroundColor: "rgba(141,107,148,0.15)" }}>
+              <Flask size={26} weight="fill" style={{ color: "var(--ht-nutrition)" }} />
+            </div>
+            <div>
+              <p className="text-sm font-bold" style={{ fontFamily: "Outfit, sans-serif", color: "var(--ht-text-primary)" }}>Nutrients running low</p>
+              <p className="text-xs mt-0.5" style={{ color: "var(--ht-text-secondary)" }}>Top up the nutrient solution</p>
+            </div>
+          </motion.div>
+        )}
       </AnimatePresence>
 
-      {/* Tent Grid Header */}
-      <div className="flex items-center justify-between">
+      {/* ── Inline Notifications ── */}
+      {unreadNotifs.length > 0 && (
+        <div className="space-y-2" data-testid="inline-notifications">
+          {unreadNotifs.map((n) => (
+            <motion.div
+              key={n.id}
+              initial={{ opacity: 0, x: -12 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="flex items-center gap-3 rounded-xl px-4 py-3 cursor-pointer transition-all hover:shadow-sm"
+              style={{
+                backgroundColor: "var(--ht-bg-surface)",
+                borderLeft: `3px solid ${
+                  n.type === "harvest_ready" ? "var(--ht-harvest)" :
+                  n.type === "low_water" ? "var(--ht-water)" :
+                  n.type === "low_nutrients" ? "var(--ht-nutrition)" : "var(--ht-brand-primary)"
+                }`,
+              }}
+              onClick={() => onMarkNotificationRead && onMarkNotificationRead(n.id)}
+              data-testid={`inline-notif-${n.id}`}
+            >
+              <Bell size={14} weight="fill" style={{ color: "var(--ht-brand-primary)" }} />
+              <span className="text-xs flex-1" style={{ color: "var(--ht-text-primary)" }}>{n.message}</span>
+              <span className="text-[10px]" style={{ color: "var(--ht-text-tertiary)" }}>tap to dismiss</span>
+            </motion.div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Level Indicators + Header ── */}
+      <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
           <h2 className="text-xl font-medium" style={{ fontFamily: "Outfit, sans-serif", color: "var(--ht-text-primary)" }}>
             Your Tent
           </h2>
-          <p className="text-xs mt-0.5" style={{ color: "var(--ht-text-tertiary)" }}>
+          <p className="text-xs mt-0.5 mb-3" style={{ color: "var(--ht-text-tertiary)" }}>
             {growingPlants.length} of {MAX_SLOTS} slots used
           </p>
+          {tentStatus && (
+            <div className="space-y-1.5">
+              <LevelIndicator level={tentStatus.water_level} color="var(--ht-water)" label="Water" icon={Drop} />
+              <LevelIndicator level={tentStatus.nutrient_level} color="var(--ht-nutrition)" label="Nutrients" icon={Flask} />
+            </div>
+          )}
         </div>
         {slotsAvailable > 0 && (
           <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
@@ -211,39 +282,33 @@ export default function SimpleUI({ plants, catalog, tentStatus, onAddPlant, onRe
                 <DialogTitle style={{ fontFamily: "Outfit, sans-serif", color: "var(--ht-text-primary)" }}>
                   Add a Plant to Your Tent
                 </DialogTitle>
-                <DialogDescription className="sr-only">Choose a plant from the catalog to add to your hydroponic tent</DialogDescription>
+                <DialogDescription className="sr-only">Choose a plant from the catalog</DialogDescription>
               </DialogHeader>
               <div className="px-6 pb-6 space-y-4">
                 <p className="text-xs" style={{ color: "var(--ht-text-tertiary)" }}>
-                  {slotsAvailable} slot{slotsAvailable !== 1 ? "s" : ""} remaining
+                  {slotsAvailable} slot{slotsAvailable !== 1 ? "s" : ""} remaining — you can add multiples of the same plant
                 </p>
-                {/* Plant options as visual cards */}
                 <div className="grid grid-cols-2 gap-2">
-                  {catalog.map((p) => {
-                    const alreadyPlanted = growingPlants.some((gp) => gp.catalog_id === p.id);
-                    return (
-                      <button
-                        key={p.id}
-                        data-testid={`catalog-plant-${p.id}`}
-                        onClick={() => setSelectedPlant(p.id)}
-                        className="rounded-xl border p-3 flex items-center gap-3 text-left transition-all hover:-translate-y-0.5"
-                        style={{
-                          borderColor: selectedPlant === p.id ? "var(--ht-brand-primary)" : "rgba(19,42,27,0.1)",
-                          backgroundColor: selectedPlant === p.id ? "rgba(45,90,60,0.06)" : "transparent",
-                          opacity: alreadyPlanted ? 0.4 : 1,
-                        }}
-                        disabled={alreadyPlanted}
-                      >
-                        <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 border" style={{ borderColor: "rgba(19,42,27,0.06)" }}>
-                          <img src={p.image} alt={p.name} className="w-full h-full object-cover" />
-                        </div>
-                        <div>
-                          <p className="text-xs font-medium" style={{ color: "var(--ht-text-primary)" }}>{p.name}</p>
-                          <p className="text-[10px]" style={{ color: "var(--ht-text-tertiary)" }}>{p.days_to_harvest} days</p>
-                        </div>
-                      </button>
-                    );
-                  })}
+                  {catalog.map((p) => (
+                    <button
+                      key={p.id}
+                      data-testid={`catalog-plant-${p.id}`}
+                      onClick={() => setSelectedPlant(p.id)}
+                      className="rounded-xl border p-3 flex items-center gap-3 text-left transition-all hover:-translate-y-0.5"
+                      style={{
+                        borderColor: selectedPlant === p.id ? "var(--ht-brand-primary)" : "rgba(19,42,27,0.1)",
+                        backgroundColor: selectedPlant === p.id ? "rgba(45,90,60,0.06)" : "transparent",
+                      }}
+                    >
+                      <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 border" style={{ borderColor: "rgba(19,42,27,0.06)" }}>
+                        <img src={p.image} alt={p.name} className="w-full h-full object-cover" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium" style={{ color: "var(--ht-text-primary)" }}>{p.name}</p>
+                        <p className="text-[10px]" style={{ color: "var(--ht-text-tertiary)" }}>{p.days_to_harvest} days</p>
+                      </div>
+                    </button>
+                  ))}
                 </div>
                 <div className="flex gap-2">
                   <DialogClose asChild>
@@ -265,7 +330,7 @@ export default function SimpleUI({ plants, catalog, tentStatus, onAddPlant, onRe
         )}
       </div>
 
-      {/* Plant Rows - 3 rows x 2 columns */}
+      {/* ── Plant Rows ── */}
       <div className="space-y-3">
         {rows.map((row, ri) => (
           <div key={ri} className="grid grid-cols-1 sm:grid-cols-2 gap-3" data-testid={`tent-row-${ri}`}>
@@ -276,14 +341,13 @@ export default function SimpleUI({ plants, catalog, tentStatus, onAddPlant, onRe
                 index={ri * 2 + ci}
                 onHarvest={onHarvestPlant}
                 onRemove={onRemovePlant}
-                catalog={catalog}
               />
             ))}
           </div>
         ))}
       </div>
 
-      {/* Harvested plants - collapsed section */}
+      {/* ── Harvested chips ── */}
       {plants.filter((p) => p.status === "harvested").length > 0 && (
         <div className="pt-4 border-t" style={{ borderColor: "rgba(19,42,27,0.06)" }}>
           <p className="text-xs font-bold tracking-wider uppercase mb-3" style={{ color: "var(--ht-text-tertiary)" }}>
@@ -298,19 +362,10 @@ export default function SimpleUI({ plants, catalog, tentStatus, onAddPlant, onRe
                 data-testid={`harvested-chip-${p.id}`}
               >
                 <div className="w-5 h-5 rounded-full overflow-hidden flex-shrink-0">
-                  {p.image ? (
-                    <img src={p.image} alt={p.name} className="w-full h-full object-cover" />
-                  ) : (
-                    <Plant size={12} weight="duotone" style={{ color: "var(--ht-brand-secondary)" }} />
-                  )}
+                  {p.image ? <img src={p.image} alt={p.name} className="w-full h-full object-cover" /> : <Plant size={12} weight="duotone" />}
                 </div>
                 <span className="text-xs" style={{ color: "var(--ht-text-tertiary)" }}>{p.nickname || p.name}</span>
-                <button
-                  onClick={() => onRemovePlant(p.id)}
-                  className="text-xs transition-opacity hover:opacity-100 opacity-50"
-                  style={{ color: "var(--ht-error)" }}
-                  data-testid={`remove-harvested-${p.id}`}
-                >
+                <button onClick={() => onRemovePlant(p.id)} className="opacity-50 hover:opacity-100" style={{ color: "var(--ht-error)" }} data-testid={`remove-harvested-${p.id}`}>
                   <Trash size={10} />
                 </button>
               </div>
