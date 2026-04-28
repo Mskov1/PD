@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogClose, DialogDescription } from "@/components/ui/dialog";
 import { Plus, Drop, Flask, Scissors, Trash, Warning, Plant, Timer } from "@phosphor-icons/react";
 
 const MAX_SLOTS = 6;
@@ -211,6 +211,7 @@ export default function SimpleUI({ plants, catalog, tentStatus, onAddPlant, onRe
                 <DialogTitle style={{ fontFamily: "Outfit, sans-serif", color: "var(--ht-text-primary)" }}>
                   Add a Plant to Your Tent
                 </DialogTitle>
+                <DialogDescription className="sr-only">Choose a plant from the catalog to add to your hydroponic tent</DialogDescription>
               </DialogHeader>
               <div className="px-6 pb-6 space-y-4">
                 <p className="text-xs" style={{ color: "var(--ht-text-tertiary)" }}>

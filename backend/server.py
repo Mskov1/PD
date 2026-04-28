@@ -270,31 +270,35 @@ async def check_notifications():
         water = tent.get("water_level", 75)
         nutrient = tent.get("nutrient_level", 60)
         if water < 30:
-            notif = {
-                "id": str(uuid.uuid4()),
-                "type": "low_water",
-                "message": f"Water level is low ({water}%). Please refill.",
-                "severity": "warning",
-                "plant_id": None,
-                "created_at": now.isoformat(),
-                "read": False,
-            }
-            await db.notifications.insert_one(notif)
-            notif.pop("_id", None)
-            new_notifs.append(notif)
+            existing = await db.notifications.find_one({"type": "low_water", "read": False})
+            if not existing:
+                notif = {
+                    "id": str(uuid.uuid4()),
+                    "type": "low_water",
+                    "message": f"Water level is low — refill needed",
+                    "severity": "warning",
+                    "plant_id": None,
+                    "created_at": now.isoformat(),
+                    "read": False,
+                }
+                await db.notifications.insert_one(notif)
+                notif.pop("_id", None)
+                new_notifs.append(notif)
         if nutrient < 25:
-            notif = {
-                "id": str(uuid.uuid4()),
-                "type": "low_nutrients",
-                "message": f"Nutrient level is low ({nutrient}%). Add nutrients.",
-                "severity": "warning",
-                "plant_id": None,
-                "created_at": now.isoformat(),
-                "read": False,
-            }
-            await db.notifications.insert_one(notif)
-            notif.pop("_id", None)
-            new_notifs.append(notif)
+            existing = await db.notifications.find_one({"type": "low_nutrients", "read": False})
+            if not existing:
+                notif = {
+                    "id": str(uuid.uuid4()),
+                    "type": "low_nutrients",
+                    "message": "Nutrients running low — top up",
+                    "severity": "warning",
+                    "plant_id": None,
+                    "created_at": now.isoformat(),
+                    "read": False,
+                }
+                await db.notifications.insert_one(notif)
+                notif.pop("_id", None)
+                new_notifs.append(notif)
     
     return {"new_notifications": new_notifs, "count": len(new_notifs)}
 
