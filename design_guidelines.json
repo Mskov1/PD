@@ -1,0 +1,96 @@
+{
+  "theme": {
+    "name": "Organic Tech (E1 Modified)",
+    "archetype": "1 (Organic & Earthy)",
+    "mode": "light",
+    "description": "A grounding blend of earthy sage and bone white, contrasted with a sharp, high-tech neon lime to represent the fusion of biology and technology. Uses solid surfaces over glassmorphism for maximum data clarity."
+  },
+  "colors": {
+    "background": {
+      "page": "#F4F5F0",
+      "surface": "#FFFFFF",
+      "surface_secondary": "#E8EAE3"
+    },
+    "text": {
+      "primary": "#132A1B",
+      "secondary": "#5C6B61",
+      "tertiary": "#8A998E"
+    },
+    "brand": {
+      "primary": "#2D5A3C",
+      "secondary": "#A3B89E",
+      "accent_unnatural": "#D4FF1E"
+    },
+    "status": {
+      "harvest": "#FF6B35",
+      "water": "#4A90E2",
+      "error": "#D33F49",
+      "nutrition": "#8D6B94"
+    }
+  },
+  "typography": {
+    "font_family": {
+      "heading": "Outfit, sans-serif",
+      "body": "DM Sans, sans-serif",
+      "mono": "JetBrains Mono, monospace"
+    },
+    "hierarchy": {
+      "h1": "text-4xl sm:text-5xl tracking-tight font-medium",
+      "h2": "text-2xl sm:text-3xl tracking-tight font-medium",
+      "h3": "text-xl font-medium",
+      "body": "text-base leading-relaxed",
+      "label": "text-xs tracking-[0.2em] uppercase font-bold"
+    }
+  },
+  "spacing_and_layout": {
+    "philosophy": "The 'Control Room' grid mixed with generous organic padding. High density for the control panel, tactile bento layouts for the simple UI.",
+    "grid_system": {
+      "simple_ui": "grid-cols-1 md:grid-cols-8 gap-8",
+      "detailed_panel": "grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6"
+    },
+    "containers": "rounded-3xl border border-[#132A1B]/10 p-6 sm:p-8 bg-white shadow-[0_4px_24px_rgba(0,0,0,0.02)]"
+  },
+  "components": {
+    "add_plant_dropdown": "Shadcn Select/Dropdown customized with rounded-full trigger, large touch targets, and icons.",
+    "timer_tracker": "Circular radial progress bar displaying lifecycle. Use brand.primary for progress, background in surface_secondary.",
+    "water_nutrient_indicators": "Vertical fill bars (pill-shaped) mimicking physical tubes. No generic text percentages; use physical visual volume.",
+    "ai_video_chat": "Dedicated 'floating' bento widget using the brand.accent_unnatural (Lime) subtle glow to signify AI presence. Inline video player.",
+    "notifications": "Sonner toast with customized left-border colors (Orange for harvest, Blue for water, Red for error).",
+    "community_feed": "Vertical marquee or scrolling list. Minimalist bento cards containing plant images and harvest time."
+  },
+  "motion_and_interactions": {
+    "hover": "-translate-y-1 shadow-md transition-all duration-300 ease-out",
+    "active": "scale-95",
+    "entrance": "staggered fade-up using framer-motion (y: 20, opacity: 0 -> y: 0, opacity: 1)"
+  },
+  "icons_and_assets": {
+    "library": "@phosphor-icons/react",
+    "weight": "duotone",
+    "instructions": "Use Duotone weight to mix the sharp tech lines with organic opacity layers."
+  },
+  "image_urls": [
+    {
+      "url": "https://images.pexels.com/photos/28129605/pexels-photo-28129605.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "category": "hero_background",
+      "description": "Modern vertical hydroponic system. Use subtly behind the detailed control panel or as a landing image."
+    },
+    {
+      "url": "https://images.pexels.com/photos/1002703/pexels-photo-1002703.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "category": "plant_seedling",
+      "description": "Close up of seedling. Use as placeholder for new plant additions in the dashboard."
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1565958047335-931d1b30ea8f?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2MTJ8MHwxfHNlYXJjaHwyfHxoeWRyb3BvbmljJTIwZmFybSUyMGluZG9vciUyMHBsYW50c3xlbnwwfHx8fDE3NzczNjYyNTl8MA&ixlib=rb-4.1.0&q=85",
+      "category": "mature_plant",
+      "description": "Green garden plant for community feed or mature harvest state."
+    }
+  ],
+  "instructions_to_main_agent": [
+    "Install dependencies: framer-motion, @phosphor-icons/react, recharts, sonner, lucide-react (if shadcn requires).",
+    "Use Shadcn components for Select, Toast, and Tabs (to switch between Simple UI and Control Panel).",
+    "Do NOT use glassmorphism. Stick to solid white panels with subtle borders for data clarity.",
+    "Implement the 'Control Room' grid for the detailed panel: tight gaps, full-height stretching children.",
+    "Ensure all interactive elements have data-testid attributes.",
+    "Visual indicators over text: Use radial dials for time, and vertical tube shapes for water/nutrient levels."
+  ]
+}
