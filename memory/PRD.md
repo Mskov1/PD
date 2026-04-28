@@ -8,52 +8,46 @@ Build an interface for HydroTent hydroponic tent management system with plant tr
 - **Frontend**: React + Tailwind + Shadcn UI + Framer Motion + Phosphor Icons
 - **AI**: Claude Sonnet 4.5 + GPT-5.2 via Emergent LLM Key
 - **Storage**: Emergent Object Storage for video tutorial uploads
-
-## User Personas
-- **Hydroponic Hobbyist**: Needs simple plant tracking and harvest reminders
-- **Community Grower**: Wants to share harvests and learn from tutorials
-
-## Core Requirements
-1. Plant management with dropdown catalog (6 plants with images)
-2. 6 fixed plant slots in 3 rows - visual tent layout
-3. Plant lifecycle timer with progress tracking
-4. Action-based alerts only (water, nutrients, harvest) - no numerical clutter
-5. Detailed control panel (temp, water, nutrients, pH, light, fan)
-6. AI assistant (floating drawer) for gardening Q&A
-7. Video tutorials (YouTube URLs + file uploads)
-8. Community harvest feed
-9. Notification system with dedup
+- **Voice**: Web Speech API (browser-native) for voice input to AI
 
 ## What's Been Implemented (April 2026)
-- [x] Full backend API: plants CRUD, tent status, notifications, AI chat, tutorials, community feed
-- [x] Simplified "My Tent" UI with 6 fixed slots, action alerts, plant images
-- [x] Control Panel with 6 environment sliders
-- [x] AI Assistant as floating button + slide-out drawer (Claude + GPT)
-- [x] Video tutorials (YouTube + file upload to object storage)
-- [x] Community harvest feed
-- [x] Notification center with dedup logic
-- [x] Max 6 plants enforcement
-- [x] Backend tests: 18/18 passing
-- [x] Frontend tests: 100% pass rate
+### v1 - Initial Build
+- Full backend API with plant CRUD, tent status, notifications, AI chat, tutorials, community feed
+- Tab-based navigation (My Tent, Control Panel, Community)
+
+### v2 - Simplified Interface
+- Reduced to 6 plant types with images
+- 6 fixed plant slots in 3 rows of 2
+- Action-only alerts (no numerical clutter)
+- AI moved to floating button + slide-out drawer
+
+### v3 - User Feedback Iteration (Current)
+- Allow adding multiples of same plant type
+- Visual level indicators (colored segments, no numbers) for water/nutrients on front page
+- Very visible warning banners when levels are low (pulsing icons)
+- Inline notifications on My Tent page with tap-to-dismiss
+- Voice input for AI (microphone button using Web Speech API)
+- Simplified AI with video answer visual example for first-time users
+- Quick suggestion buttons for common questions
+- Control Panel: Light on/off toggle switch
+- Control Panel: Fan on/off toggle switch  
+- Control Panel: pH pump up/down with visual level indicator
+- Notification dedup for water/nutrient alerts
 
 ## Prioritized Backlog
-### P0 (Critical)
-- All core features implemented
-
 ### P1 (High)
-- Automated water level simulation / sensor integration
+- Scheduled reminders (change water every X days, remove roots)
+- Real sensor data integration (IoT)
 - Push notifications (browser)
-- Plant care schedule reminders (change water every X days)
 
 ### P2 (Nice to have)
 - Multi-tent support
 - Plant growth photo log
-- Detailed harvest analytics
-- Export data to CSV
 - Dark mode toggle
+- Community comments/interactions
+- Export data to CSV
 
 ## Next Tasks
-1. Connect real sensor data (IoT integration)
-2. Add "change water" and "remove roots" scheduled reminders
-3. Community features: comments on harvests, plant tips sharing
-4. Mobile responsive polish
+1. Add "change water" and "remove roots" scheduled reminders per plant
+2. Connect real sensor data for automated water/nutrient monitoring
+3. Community interaction features
