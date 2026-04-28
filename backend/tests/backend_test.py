@@ -15,18 +15,20 @@ def api_client():
     return s
 
 
-# ==================== PLANT CATALOG ====================
+# ==================== PLANT CATALOG (v2: 6 plants with images) ====================
 class TestPlantCatalog:
     def test_get_catalog(self, api_client):
         r = api_client.get(f"{API}/plants/catalog")
         assert r.status_code == 200
         data = r.json()
         assert isinstance(data, list)
-        assert len(data) >= 10
+        assert len(data) == 6, f"Expected exactly 6 plants in catalog, got {len(data)}"
         ids = {p["id"] for p in data}
-        assert "basil" in ids and "lettuce" in ids
+        expected_ids = {"lettuce", "basil", "tomato", "strawberry", "mint", "spinach"}
+        assert ids == expected_ids, f"Catalog ids mismatch. Got {ids}, expected {expected_ids}"
         for p in data:
-            assert {"id", "name", "days_to_harvest", "category"}.issubset(p.keys())
+            assert {"id", "name", "days_to_harvest", "category", "image"}.issubset(p.keys())
+            assert isinstance(p["image"], str) and p["image"].startswith("http"), f"Plant {p['id']} missing image URL"
 
 
 # ==================== PLANTS CRUD ====================
@@ -42,7 +44,38 @@ class TestPlants:
         assert data["name"] == "Lettuce"
         assert data["status"] == "growing"
         assert "id" in data
+        # v2: image field must be present
+        assert "image" in data and data["image"].startswith("http"), "Plant create response missing image URL"
         TestPlants.plant_id = data["id"]
+
+    def test_max_plants_limit(self, api_client):
+        """v2: MAX_PLANTS=6 enforcement. Fill tent to 6 then expect 400."""
+        # First, find current growing count
+        existing = api_client.get(f"{API}/plants").json()
+        growing = [p for p in existing if p.get("status") == "growing"]
+        created_ids = []
+        catalog_ids = ["lettuce", "basil", "tomato", "strawberry", "mint", "spinach"]
+        idx = 0
+        try:
+            while len(growing) + len(created_ids) < 6 and idx < len(catalog_ids):
+                r = api_client.post(f"{API}/plants", json={
+                    "catalog_id": catalog_ids[idx],
+                    "nickname": f"TEST_Max{idx}"
+                })
+                idx += 1
+                if r.status_code == 200:
+                    created_ids.append(r.json()["id"])
+                elif r.status_code == 400:
+                    # Already at limit, that's the test's purpose
+                    break
+            # Now attempt to add a 7th — should fail with 400
+            r = api_client.post(f"{API}/plants", json={"catalog_id": "spinach", "nickname": "TEST_Overflow"})
+            assert r.status_code == 400, f"Expected 400 when exceeding 6 plants, got {r.status_code}: {r.text}"
+            detail = r.json().get("detail", "")
+            assert "6" in detail or "Maximum" in detail or "max" in detail.lower()
+        finally:
+            for pid in created_ids:
+                api_client.delete(f"{API}/plants/{pid}")
 
     def test_create_plant_invalid_catalog(self, api_client):
         r = api_client.post(f"{API}/plants", json={"catalog_id": "nonexistent"})

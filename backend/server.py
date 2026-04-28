@@ -61,19 +61,15 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 # ==================== PLANT CATALOG ====================
+MAX_PLANTS = 6
+
 PLANT_CATALOG = [
-    {"id": "lettuce", "name": "Lettuce", "days_to_harvest": 30, "icon": "leaf", "category": "Leafy Greens"},
-    {"id": "basil", "name": "Basil", "days_to_harvest": 25, "icon": "herb", "category": "Herbs"},
-    {"id": "tomato", "name": "Tomato", "days_to_harvest": 80, "icon": "plant", "category": "Fruits"},
-    {"id": "pepper", "name": "Bell Pepper", "days_to_harvest": 70, "icon": "plant", "category": "Fruits"},
-    {"id": "strawberry", "name": "Strawberry", "days_to_harvest": 60, "icon": "flower", "category": "Fruits"},
-    {"id": "spinach", "name": "Spinach", "days_to_harvest": 40, "icon": "leaf", "category": "Leafy Greens"},
-    {"id": "mint", "name": "Mint", "days_to_harvest": 20, "icon": "herb", "category": "Herbs"},
-    {"id": "cilantro", "name": "Cilantro", "days_to_harvest": 30, "icon": "herb", "category": "Herbs"},
-    {"id": "kale", "name": "Kale", "days_to_harvest": 55, "icon": "leaf", "category": "Leafy Greens"},
-    {"id": "cucumber", "name": "Cucumber", "days_to_harvest": 50, "icon": "plant", "category": "Fruits"},
-    {"id": "parsley", "name": "Parsley", "days_to_harvest": 35, "icon": "herb", "category": "Herbs"},
-    {"id": "chives", "name": "Chives", "days_to_harvest": 30, "icon": "herb", "category": "Herbs"},
+    {"id": "lettuce", "name": "Lettuce", "days_to_harvest": 30, "image": "https://images.pexels.com/photos/6849628/pexels-photo-6849628.jpeg?auto=compress&cs=tinysrgb&w=300&h=300&fit=crop", "category": "Leafy Greens"},
+    {"id": "basil", "name": "Basil", "days_to_harvest": 25, "image": "https://images.pexels.com/photos/35222890/pexels-photo-35222890.jpeg?auto=compress&cs=tinysrgb&w=300&h=300&fit=crop", "category": "Herbs"},
+    {"id": "tomato", "name": "Tomato", "days_to_harvest": 80, "image": "https://images.pexels.com/photos/2858259/pexels-photo-2858259.jpeg?auto=compress&cs=tinysrgb&w=300&h=300&fit=crop", "category": "Fruits"},
+    {"id": "strawberry", "name": "Strawberry", "days_to_harvest": 60, "image": "https://images.pexels.com/photos/16678046/pexels-photo-16678046.jpeg?auto=compress&cs=tinysrgb&w=300&h=300&fit=crop", "category": "Fruits"},
+    {"id": "mint", "name": "Mint", "days_to_harvest": 20, "image": "https://images.pexels.com/photos/31510169/pexels-photo-31510169.jpeg?auto=compress&cs=tinysrgb&w=300&h=300&fit=crop", "category": "Herbs"},
+    {"id": "spinach", "name": "Spinach", "days_to_harvest": 40, "image": "https://images.pexels.com/photos/30801724/pexels-photo-30801724.jpeg?auto=compress&cs=tinysrgb&w=300&h=300&fit=crop", "category": "Leafy Greens"},
 ]
 
 # ==================== MODELS ====================
@@ -134,6 +130,10 @@ async def add_plant(plant: PlantCreate):
     if not catalog_item:
         raise HTTPException(status_code=404, detail="Plant not found in catalog")
     
+    current_count = await db.plants.count_documents({"status": "growing"})
+    if current_count >= MAX_PLANTS:
+        raise HTTPException(status_code=400, detail="Maximum 6 plants allowed in the tent")
+    
     plant_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
     doc = {
@@ -143,8 +143,10 @@ async def add_plant(plant: PlantCreate):
         "nickname": plant.nickname or catalog_item["name"],
         "days_to_harvest": catalog_item["days_to_harvest"],
         "category": catalog_item["category"],
+        "image": catalog_item.get("image", ""),
         "planted_at": now,
         "status": "growing",
+        "slot": current_count,
     }
     await db.plants.insert_one(doc)
     doc.pop("_id", None)

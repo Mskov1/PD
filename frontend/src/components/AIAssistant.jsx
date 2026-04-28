@@ -1,32 +1,29 @@
 import { useState, useRef, useEffect } from "react";
-import { motion } from "framer-motion";
 import axios from "axios";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
-import { PaperPlaneTilt, Robot, VideoCamera, Plus, YoutubeLogo, Trash } from "@phosphor-icons/react";
+import { PaperPlaneTilt, Robot, VideoCamera, YoutubeLogo, Trash } from "@phosphor-icons/react";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
 export default function AIAssistant() {
-  const [subTab, setSubTab] = useState("chat");
   const [message, setMessage] = useState("");
   const [model, setModel] = useState("claude");
   const [chatHistory, setChatHistory] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [showTutorials, setShowTutorials] = useState(false);
   const [tutorials, setTutorials] = useState([]);
   const [showAddTutorial, setShowAddTutorial] = useState(false);
-  const [tutorialForm, setTutorialForm] = useState({ title: "", description: "", youtube_url: "", plant_type: "" });
+  const [tutorialForm, setTutorialForm] = useState({ title: "", youtube_url: "" });
   const chatEndRef = useRef(null);
 
   useEffect(() => {
     fetchHistory();
-    fetchTutorials();
   }, []);
 
   useEffect(() => {
@@ -71,7 +68,7 @@ export default function AIAssistant() {
         };
         return updated;
       });
-      toast.error("AI request failed. Please try again.");
+      toast.error("AI request failed");
     } finally {
       setLoading(false);
     }
@@ -80,9 +77,9 @@ export default function AIAssistant() {
   const addTutorial = async () => {
     if (!tutorialForm.title) return;
     try {
-      await axios.post(`${API}/tutorials`, tutorialForm);
+      await axios.post(`${API}/tutorials`, { ...tutorialForm, description: "", plant_type: "" });
       toast.success("Tutorial added!");
-      setTutorialForm({ title: "", description: "", youtube_url: "", plant_type: "" });
+      setTutorialForm({ title: "", youtube_url: "" });
       setShowAddTutorial(false);
       fetchTutorials();
     } catch (e) {
@@ -93,10 +90,9 @@ export default function AIAssistant() {
   const deleteTutorial = async (id) => {
     try {
       await axios.delete(`${API}/tutorials/${id}`);
-      toast("Tutorial removed");
       fetchTutorials();
     } catch (e) {
-      toast.error("Failed to delete tutorial");
+      toast.error("Failed to delete");
     }
   };
 
@@ -115,7 +111,7 @@ export default function AIAssistant() {
       toast.success("Video uploaded!");
       fetchTutorials();
     } catch (e) {
-      toast.error("Upload failed. Check file type (mp4, webm, mov, avi).");
+      toast.error("Upload failed");
     }
   };
 
@@ -126,275 +122,157 @@ export default function AIAssistant() {
   };
 
   return (
-    <div className="space-y-6" data-testid="ai-assistant">
-      <Tabs value={subTab} onValueChange={setSubTab}>
-        <TabsList className="h-10 p-1 rounded-xl" style={{ backgroundColor: "var(--ht-bg-secondary)" }}>
-          <TabsTrigger value="chat" data-testid="ai-chat-tab" className="rounded-lg px-4 text-sm">
-            <Robot size={16} weight="duotone" className="mr-2" />
-            Ask AI
-          </TabsTrigger>
-          <TabsTrigger value="tutorials" data-testid="ai-tutorials-tab" className="rounded-lg px-4 text-sm">
-            <VideoCamera size={16} weight="duotone" className="mr-2" />
-            Tutorials
-          </TabsTrigger>
-        </TabsList>
+    <div className="flex flex-col h-full" data-testid="ai-assistant">
+      {/* Model selector + tutorials toggle */}
+      <div className="px-5 py-3 flex items-center gap-2 border-b" style={{ borderColor: "rgba(19,42,27,0.06)" }}>
+        <Select value={model} onValueChange={setModel}>
+          <SelectTrigger data-testid="ai-model-select" className="w-32 h-8 rounded-full text-xs" style={{ borderColor: "rgba(19,42,27,0.15)" }}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="claude">Claude Sonnet</SelectItem>
+            <SelectItem value="gpt">GPT-5.2</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button
+          data-testid="toggle-tutorials"
+          variant="ghost"
+          size="sm"
+          className="rounded-full text-xs h-8 ml-auto"
+          onClick={() => { setShowTutorials(!showTutorials); if (!showTutorials) fetchTutorials(); }}
+          style={{ color: "var(--ht-text-secondary)" }}
+        >
+          <VideoCamera size={14} weight="duotone" className="mr-1" />
+          Tutorials
+        </Button>
+      </div>
 
-        {/* CHAT TAB */}
-        <TabsContent value="chat" className="mt-4">
-          <div
-            className="rounded-3xl border overflow-hidden"
-            style={{
-              backgroundColor: "var(--ht-bg-surface)",
-              borderColor: "rgba(19,42,27,0.1)",
-              boxShadow: "0 4px 24px rgba(0,0,0,0.02)",
-            }}
-          >
-            {/* AI badge */}
-            <div className="px-6 py-3 flex items-center justify-between border-b" style={{ borderColor: "rgba(19,42,27,0.06)" }}>
-              <div className="flex items-center gap-2">
-                <div
-                  className="w-7 h-7 rounded-lg flex items-center justify-center"
-                  style={{ backgroundColor: "var(--ht-brand-accent)", boxShadow: "0 0 12px rgba(212,255,30,0.3)" }}
-                >
-                  <Robot size={16} weight="duotone" style={{ color: "var(--ht-text-primary)" }} />
-                </div>
-                <span className="text-sm font-medium" style={{ fontFamily: "Outfit, sans-serif" }}>HydroTent AI</span>
-              </div>
-              <Select value={model} onValueChange={setModel}>
-                <SelectTrigger data-testid="ai-model-select" className="w-36 h-8 rounded-full text-xs" style={{ borderColor: "rgba(19,42,27,0.15)" }}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="claude">Claude Sonnet</SelectItem>
-                  <SelectItem value="gpt">GPT-5.2</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Chat messages */}
-            <ScrollArea className="h-[400px]">
-              <div className="p-6 space-y-4">
-                {chatHistory.length === 0 && (
-                  <div className="text-center py-12">
-                    <Robot size={48} weight="duotone" style={{ color: "var(--ht-brand-secondary)" }} className="mx-auto mb-3" />
-                    <p className="text-sm" style={{ color: "var(--ht-text-tertiary)" }}>
-                      Ask me anything about hydroponic gardening!
-                    </p>
-                  </div>
-                )}
-                {chatHistory.map((chat, i) => (
-                  <div key={chat.id || i} className="space-y-3">
-                    {/* User message */}
-                    <div className="flex justify-end">
-                      <div
-                        className="max-w-[80%] rounded-2xl rounded-tr-md px-4 py-3 text-sm"
-                        style={{ backgroundColor: "var(--ht-brand-primary)", color: "#fff" }}
-                      >
-                        {chat.question}
-                      </div>
-                    </div>
-                    {/* AI response */}
-                    {chat.answer ? (
-                      <div className="flex justify-start">
-                        <div
-                          className="max-w-[80%] rounded-2xl rounded-tl-md px-4 py-3 text-sm whitespace-pre-wrap"
-                          style={{ backgroundColor: "var(--ht-bg-secondary)", color: "var(--ht-text-primary)" }}
-                        >
-                          {chat.answer}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex justify-start">
-                        <div
-                          className="rounded-2xl rounded-tl-md px-4 py-3"
-                          style={{ backgroundColor: "var(--ht-bg-secondary)" }}
-                        >
-                          <div className="flex gap-1">
-                            <span className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: "var(--ht-brand-primary)", animationDelay: "0ms" }} />
-                            <span className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: "var(--ht-brand-primary)", animationDelay: "150ms" }} />
-                            <span className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: "var(--ht-brand-primary)", animationDelay: "300ms" }} />
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-                <div ref={chatEndRef} />
-              </div>
-            </ScrollArea>
-
-            {/* Input */}
-            <div className="px-6 py-4 border-t" style={{ borderColor: "rgba(19,42,27,0.06)" }}>
-              <div className="flex gap-2">
-                <Input
-                  data-testid="ai-chat-input"
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
-                  placeholder="How do I grow basil hydroponically?"
-                  className="rounded-full h-10 px-4"
-                  style={{ borderColor: "rgba(19,42,27,0.15)" }}
-                  disabled={loading}
-                />
-                <Button
-                  data-testid="ai-send-btn"
-                  onClick={sendMessage}
-                  disabled={!message.trim() || loading}
-                  className="rounded-full h-10 w-10 p-0 transition-all hover:-translate-y-0.5 active:scale-95"
-                  style={{ backgroundColor: "var(--ht-brand-accent)", color: "var(--ht-text-primary)" }}
-                >
-                  <PaperPlaneTilt size={18} weight="bold" />
-                </Button>
-              </div>
-            </div>
-          </div>
-        </TabsContent>
-
-        {/* TUTORIALS TAB */}
-        <TabsContent value="tutorials" className="mt-4">
-          <div className="space-y-4">
-            {/* Actions */}
-            <div className="flex flex-wrap gap-3">
+      {showTutorials ? (
+        /* Tutorials view */
+        <ScrollArea className="flex-1">
+          <div className="p-5 space-y-3">
+            <div className="flex gap-2">
               <Dialog open={showAddTutorial} onOpenChange={setShowAddTutorial}>
                 <DialogTrigger asChild>
                   <Button
                     data-testid="add-tutorial-btn"
-                    className="rounded-full px-4 h-10 transition-all hover:-translate-y-0.5 active:scale-95"
+                    size="sm"
+                    className="rounded-full text-xs h-8 px-3"
                     style={{ backgroundColor: "var(--ht-brand-primary)", color: "#fff" }}
                   >
-                    <YoutubeLogo size={16} weight="duotone" className="mr-2" />
-                    Add YouTube Tutorial
+                    <YoutubeLogo size={12} className="mr-1" /> Add YouTube
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="rounded-3xl" style={{ backgroundColor: "var(--ht-bg-surface)" }}>
+                <DialogContent className="rounded-2xl" style={{ backgroundColor: "var(--ht-bg-surface)" }}>
                   <DialogHeader>
                     <DialogTitle style={{ fontFamily: "Outfit, sans-serif" }}>Add Tutorial</DialogTitle>
                   </DialogHeader>
                   <div className="space-y-3 mt-2">
-                    <Input
-                      data-testid="tutorial-title-input"
-                      placeholder="Tutorial title"
-                      value={tutorialForm.title}
-                      onChange={(e) => setTutorialForm((p) => ({ ...p, title: e.target.value }))}
-                      className="rounded-xl"
-                    />
-                    <Input
-                      data-testid="tutorial-url-input"
-                      placeholder="YouTube URL"
-                      value={tutorialForm.youtube_url}
-                      onChange={(e) => setTutorialForm((p) => ({ ...p, youtube_url: e.target.value }))}
-                      className="rounded-xl"
-                    />
-                    <Input
-                      data-testid="tutorial-desc-input"
-                      placeholder="Description (optional)"
-                      value={tutorialForm.description}
-                      onChange={(e) => setTutorialForm((p) => ({ ...p, description: e.target.value }))}
-                      className="rounded-xl"
-                    />
-                    <Button
-                      data-testid="save-tutorial-btn"
-                      onClick={addTutorial}
-                      disabled={!tutorialForm.title}
-                      className="w-full rounded-xl h-10"
-                      style={{ backgroundColor: "var(--ht-brand-primary)", color: "#fff" }}
-                    >
-                      Save Tutorial
-                    </Button>
+                    <Input data-testid="tutorial-title-input" placeholder="Title" value={tutorialForm.title} onChange={(e) => setTutorialForm((p) => ({ ...p, title: e.target.value }))} className="rounded-xl" />
+                    <Input data-testid="tutorial-url-input" placeholder="YouTube URL" value={tutorialForm.youtube_url} onChange={(e) => setTutorialForm((p) => ({ ...p, youtube_url: e.target.value }))} className="rounded-xl" />
+                    <Button data-testid="save-tutorial-btn" onClick={addTutorial} disabled={!tutorialForm.title} className="w-full rounded-xl" style={{ backgroundColor: "var(--ht-brand-primary)", color: "#fff" }}>Save</Button>
                   </div>
                 </DialogContent>
               </Dialog>
-
               <label>
-                <input
-                  type="file"
-                  accept="video/*"
-                  className="hidden"
-                  onChange={uploadVideo}
-                  data-testid="video-upload-input"
-                />
-                <Button
-                  data-testid="upload-video-btn"
-                  variant="outline"
-                  className="rounded-full px-4 h-10 cursor-pointer transition-all hover:-translate-y-0.5 active:scale-95"
-                  style={{ borderColor: "rgba(19,42,27,0.15)" }}
-                  asChild
-                >
-                  <span>
-                    <VideoCamera size={16} weight="duotone" className="mr-2" />
-                    Upload Video
-                  </span>
+                <input type="file" accept="video/*" className="hidden" onChange={uploadVideo} data-testid="video-upload-input" />
+                <Button data-testid="upload-video-btn" variant="outline" size="sm" className="rounded-full text-xs h-8 px-3 cursor-pointer" asChild>
+                  <span><VideoCamera size={12} className="mr-1" /> Upload</span>
                 </Button>
               </label>
             </div>
-
-            {/* Tutorial list */}
             {tutorials.length === 0 ? (
-              <div className="text-center py-16">
-                <VideoCamera size={48} weight="duotone" style={{ color: "var(--ht-brand-secondary)" }} className="mx-auto mb-3" />
-                <p className="text-sm" style={{ color: "var(--ht-text-tertiary)" }}>No tutorials yet. Add one to get started!</p>
-              </div>
+              <p className="text-xs text-center py-8" style={{ color: "var(--ht-text-tertiary)" }}>No tutorials yet</p>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {tutorials.map((t) => (
-                  <motion.div
-                    key={t.id}
-                    initial={{ opacity: 0, y: 12 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="rounded-2xl border overflow-hidden group"
-                    style={{
-                      backgroundColor: "var(--ht-bg-surface)",
-                      borderColor: "rgba(19,42,27,0.1)",
-                      boxShadow: "0 4px 24px rgba(0,0,0,0.02)",
-                    }}
-                    data-testid={`tutorial-card-${t.id}`}
-                  >
-                    {t.youtube_url && getYoutubeEmbedUrl(t.youtube_url) ? (
-                      <div className="aspect-video">
-                        <iframe
-                          src={getYoutubeEmbedUrl(t.youtube_url)}
-                          title={t.title}
-                          className="w-full h-full"
-                          allowFullScreen
-                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                        />
-                      </div>
-                    ) : t.video_path ? (
-                      <div className="aspect-video bg-black flex items-center justify-center">
-                        <video
-                          src={`${API}/tutorials/video/${t.video_path}`}
-                          controls
-                          className="w-full h-full"
-                        />
-                      </div>
-                    ) : null}
-                    <div className="p-4">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <h4 className="font-medium text-sm" style={{ fontFamily: "Outfit, sans-serif" }}>{t.title}</h4>
-                          {t.description && (
-                            <p className="text-xs mt-1" style={{ color: "var(--ht-text-tertiary)" }}>{t.description}</p>
-                          )}
-                        </div>
-                        <Button
-                          data-testid={`delete-tutorial-${t.id}`}
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => deleteTutorial(t.id)}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity"
-                          style={{ color: "var(--ht-error)" }}
-                        >
-                          <Trash size={14} />
-                        </Button>
-                      </div>
+              tutorials.map((t) => (
+                <div key={t.id} className="rounded-xl border overflow-hidden" style={{ borderColor: "rgba(19,42,27,0.08)" }} data-testid={`tutorial-card-${t.id}`}>
+                  {t.youtube_url && getYoutubeEmbedUrl(t.youtube_url) && (
+                    <div className="aspect-video">
+                      <iframe src={getYoutubeEmbedUrl(t.youtube_url)} title={t.title} className="w-full h-full" allowFullScreen />
                     </div>
-                  </motion.div>
-                ))}
-              </div>
+                  )}
+                  {t.video_path && (
+                    <div className="aspect-video bg-black">
+                      <video src={`${API}/tutorials/video/${t.video_path}`} controls className="w-full h-full" />
+                    </div>
+                  )}
+                  <div className="p-3 flex items-center justify-between">
+                    <span className="text-xs font-medium truncate" style={{ color: "var(--ht-text-primary)" }}>{t.title}</span>
+                    <button onClick={() => deleteTutorial(t.id)} className="text-xs" style={{ color: "var(--ht-error)" }} data-testid={`delete-tutorial-${t.id}`}>
+                      <Trash size={12} />
+                    </button>
+                  </div>
+                </div>
+              ))
             )}
           </div>
-        </TabsContent>
-      </Tabs>
+        </ScrollArea>
+      ) : (
+        /* Chat view */
+        <>
+          <ScrollArea className="flex-1">
+            <div className="p-5 space-y-4">
+              {chatHistory.length === 0 && (
+                <div className="text-center py-12">
+                  <Robot size={40} weight="duotone" style={{ color: "var(--ht-brand-secondary)" }} className="mx-auto mb-2" />
+                  <p className="text-xs" style={{ color: "var(--ht-text-tertiary)" }}>Ask me anything about hydroponic gardening!</p>
+                </div>
+              )}
+              {chatHistory.map((chat, i) => (
+                <div key={chat.id || i} className="space-y-2">
+                  <div className="flex justify-end">
+                    <div className="max-w-[85%] rounded-2xl rounded-tr-md px-3 py-2 text-xs" style={{ backgroundColor: "var(--ht-brand-primary)", color: "#fff" }}>
+                      {chat.question}
+                    </div>
+                  </div>
+                  {chat.answer ? (
+                    <div className="flex justify-start">
+                      <div className="max-w-[85%] rounded-2xl rounded-tl-md px-3 py-2 text-xs whitespace-pre-wrap" style={{ backgroundColor: "var(--ht-bg-secondary)", color: "var(--ht-text-primary)" }}>
+                        {chat.answer}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex justify-start">
+                      <div className="rounded-2xl rounded-tl-md px-3 py-2" style={{ backgroundColor: "var(--ht-bg-secondary)" }}>
+                        <div className="flex gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ backgroundColor: "var(--ht-brand-primary)", animationDelay: "0ms" }} />
+                          <span className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ backgroundColor: "var(--ht-brand-primary)", animationDelay: "150ms" }} />
+                          <span className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ backgroundColor: "var(--ht-brand-primary)", animationDelay: "300ms" }} />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+              <div ref={chatEndRef} />
+            </div>
+          </ScrollArea>
+
+          <div className="px-5 py-3 border-t" style={{ borderColor: "rgba(19,42,27,0.06)" }}>
+            <div className="flex gap-2">
+              <Input
+                data-testid="ai-chat-input"
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
+                placeholder="How do I grow basil?"
+                className="rounded-full h-9 px-4 text-xs"
+                style={{ borderColor: "rgba(19,42,27,0.15)" }}
+                disabled={loading}
+              />
+              <Button
+                data-testid="ai-send-btn"
+                onClick={sendMessage}
+                disabled={!message.trim() || loading}
+                className="rounded-full h-9 w-9 p-0 transition-all active:scale-95"
+                style={{ backgroundColor: "var(--ht-brand-accent)", color: "var(--ht-text-primary)" }}
+              >
+                <PaperPlaneTilt size={16} weight="bold" />
+              </Button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
