@@ -91,6 +91,7 @@ const Dashboard = () => {
                   onRemovePlant={removePlant}
                   onHarvestPlant={harvestPlant}
                   onMarkNotificationRead={markNotificationRead}
+                  onOpenAI={() => setShowAI(true)}
                 />
               </TabsContent>
 

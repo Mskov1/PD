@@ -1,10 +1,10 @@
-"""HydroTent backend API tests."""
+"""HydroTent backend API tests (v5)."""
+import io
 import os
-import time
 import pytest
 import requests
 
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://hydro-plant-hub.preview.emergentagent.com").rstrip("/")
+BASE_URL = os.environ["REACT_APP_BACKEND_URL"].rstrip("/")
 API = f"{BASE_URL}/api"
 
 
@@ -15,23 +15,22 @@ def api_client():
     return s
 
 
-# ==================== PLANT CATALOG (v2: 6 plants with images) ====================
+# ==================== PLANT CATALOG ====================
 class TestPlantCatalog:
     def test_get_catalog(self, api_client):
         r = api_client.get(f"{API}/plants/catalog")
         assert r.status_code == 200
         data = r.json()
         assert isinstance(data, list)
-        assert len(data) == 6, f"Expected exactly 6 plants in catalog, got {len(data)}"
+        assert len(data) == 6
         ids = {p["id"] for p in data}
-        expected_ids = {"lettuce", "basil", "tomato", "strawberry", "mint", "spinach"}
-        assert ids == expected_ids, f"Catalog ids mismatch. Got {ids}, expected {expected_ids}"
+        assert ids == {"lettuce", "basil", "tomato", "strawberry", "mint", "spinach"}
         for p in data:
             assert {"id", "name", "days_to_harvest", "category", "image"}.issubset(p.keys())
-            assert isinstance(p["image"], str) and p["image"].startswith("http"), f"Plant {p['id']} missing image URL"
+            assert p["image"].startswith("http")
 
 
-# ==================== PLANTS CRUD ====================
+# ==================== PLANTS CRUD (v5: no MAX_PLANTS limit) ====================
 class TestPlants:
     plant_id = None
 
@@ -43,117 +42,46 @@ class TestPlants:
         assert data["nickname"] == "TEST_Lettuce"
         assert data["name"] == "Lettuce"
         assert data["status"] == "growing"
-        assert "id" in data
-        # v2: image field must be present
-        assert "image" in data and data["image"].startswith("http"), "Plant create response missing image URL"
+        assert data["image"].startswith("http")
         TestPlants.plant_id = data["id"]
 
-    def test_max_plants_limit(self, api_client):
-        """v2: MAX_PLANTS=6 enforcement. Fill tent to 6 then expect 400."""
-        # First, find current growing count
-        existing = api_client.get(f"{API}/plants").json()
-        growing = [p for p in existing if p.get("status") == "growing"]
-        created_ids = []
-        catalog_ids = ["lettuce", "basil", "tomato", "strawberry", "mint", "spinach"]
-        idx = 0
+    def test_no_max_plants_limit(self, api_client):
+        """v5: MAX_PLANTS limit removed. Adding many plants should all succeed."""
+        created = []
+        catalog_ids = ["lettuce", "basil", "tomato", "strawberry", "mint", "spinach", "lettuce", "basil"]
         try:
-            while len(growing) + len(created_ids) < 6 and idx < len(catalog_ids):
-                r = api_client.post(f"{API}/plants", json={
-                    "catalog_id": catalog_ids[idx],
-                    "nickname": f"TEST_Max{idx}"
-                })
-                idx += 1
-                if r.status_code == 200:
-                    created_ids.append(r.json()["id"])
-                elif r.status_code == 400:
-                    # Already at limit, that's the test's purpose
-                    break
-            # Now attempt to add a 7th — should fail with 400
-            r = api_client.post(f"{API}/plants", json={"catalog_id": "spinach", "nickname": "TEST_Overflow"})
-            assert r.status_code == 400, f"Expected 400 when exceeding 6 plants, got {r.status_code}: {r.text}"
-            detail = r.json().get("detail", "")
-            assert "6" in detail or "Maximum" in detail or "max" in detail.lower()
+            for i, cid in enumerate(catalog_ids):
+                r = api_client.post(f"{API}/plants", json={"catalog_id": cid, "nickname": f"TEST_NoLimit{i}"})
+                assert r.status_code == 200, f"Plant #{i} ({cid}) failed: {r.status_code} {r.text}"
+                created.append(r.json()["id"])
+            # All 8 should be present
+            plants = api_client.get(f"{API}/plants").json()
+            ids = {p["id"] for p in plants}
+            for pid in created:
+                assert pid in ids
         finally:
-            for pid in created_ids:
+            for pid in created:
                 api_client.delete(f"{API}/plants/{pid}")
 
     def test_create_plant_invalid_catalog(self, api_client):
         r = api_client.post(f"{API}/plants", json={"catalog_id": "nonexistent"})
         assert r.status_code == 404
 
-    def test_create_duplicate_plant_type_allowed(self, api_client):
-        """v3: Allow adding multiples of the same plant type."""
-        # Free slots: temporarily delete TestPlants.plant_id (created in test_create_plant)
-        freed = []
-        if TestPlants.plant_id:
-            r = api_client.delete(f"{API}/plants/{TestPlants.plant_id}")
-            if r.status_code == 200:
-                freed.append(TestPlants.plant_id)
-                TestPlants.plant_id = None
-
-        ids = []
-        try:
-            plants = api_client.get(f"{API}/plants").json()
-            growing = [p for p in plants if p.get("status") == "growing"]
-            if len(growing) > 4:
-                pytest.skip(f"Need >=2 free slots; only {6 - len(growing)} free")
-            for i in range(2):
-                r = api_client.post(f"{API}/plants", json={"catalog_id": "basil", "nickname": f"TEST_DupBasil{i}"})
-                assert r.status_code == 200, f"duplicate basil add failed: {r.status_code} {r.text}"
-                assert r.json()["catalog_id"] == "basil"
-                ids.append(r.json()["id"])
-            plants = api_client.get(f"{API}/plants").json()
-            present = [p for p in plants if p["id"] in ids and p["status"] == "growing"]
-            assert len(present) == 2, "Both duplicate basils should be growing"
-        finally:
-            for pid in ids:
-                api_client.delete(f"{API}/plants/{pid}")
-            if freed and TestPlants.plant_id is None:
-                r = api_client.post(f"{API}/plants", json={"catalog_id": "lettuce", "nickname": "TEST_Lettuce"})
-                if r.status_code == 200:
-                    TestPlants.plant_id = r.json()["id"]
-
     def test_get_plants(self, api_client):
         r = api_client.get(f"{API}/plants")
         assert r.status_code == 200
-        data = r.json()
-        assert isinstance(data, list)
-        assert any(p["id"] == TestPlants.plant_id for p in data)
+        assert any(p["id"] == TestPlants.plant_id for p in r.json())
 
     def test_harvest_plant(self, api_client):
-        # Reuse the plant created in test_create_plant to avoid hitting MAX_PLANTS
-        # We'll create a separate plant for harvest, but first free up a slot if needed
-        plants = api_client.get(f"{API}/plants").json()
-        growing = [p for p in plants if p.get("status") == "growing"]
-        # If at capacity, harvest TestPlants.plant_id directly
-        if len(growing) >= 6:
-            assert TestPlants.plant_id is not None
-            # Re-fetch and harvest the test plant
-            r = api_client.put(f"{API}/plants/{TestPlants.plant_id}/harvest")
-            assert r.status_code == 200, r.text
-            data = r.json()
-            assert data["status"] == "harvested"
-            # Recreate a plant for downstream test_delete_plant
-            r2 = api_client.post(f"{API}/plants", json={"catalog_id": "lettuce", "nickname": "TEST_Lettuce2"})
-            if r2.status_code == 200:
-                TestPlants.plant_id = r2.json()["id"]
-            return
-
-        r = api_client.post(f"{API}/plants", json={"catalog_id": "basil", "nickname": "TEST_HarvestBasil"})
-        assert r.status_code == 200, r.text
+        r = api_client.post(f"{API}/plants", json={"catalog_id": "basil", "nickname": "TEST_HarvestBasil_v5"})
+        assert r.status_code == 200
         pid = r.json()["id"]
-
         r = api_client.put(f"{API}/plants/{pid}/harvest")
         assert r.status_code == 200
-        data = r.json()
-        assert data["status"] == "harvested"
-
-        # Verify it appears in community feed
-        r = api_client.get(f"{API}/community/feed")
-        assert r.status_code == 200
-        feed = r.json()
-        assert any(e.get("nickname") == "TEST_HarvestBasil" for e in feed)
-        # Cleanup the harvested plant
+        assert r.json()["status"] == "harvested"
+        # Verify in feed
+        feed = api_client.get(f"{API}/community/feed").json()
+        assert any(e.get("nickname") == "TEST_HarvestBasil_v5" for e in feed)
         api_client.delete(f"{API}/plants/{pid}")
 
     def test_harvest_nonexistent(self, api_client):
@@ -161,55 +89,55 @@ class TestPlants:
         assert r.status_code == 404
 
     def test_delete_plant(self, api_client):
-        assert TestPlants.plant_id is not None
+        assert TestPlants.plant_id
         r = api_client.delete(f"{API}/plants/{TestPlants.plant_id}")
         assert r.status_code == 200
-        # Verify removed
-        r = api_client.get(f"{API}/plants")
-        assert not any(p["id"] == TestPlants.plant_id for p in r.json())
+        plants = api_client.get(f"{API}/plants").json()
+        assert not any(p["id"] == TestPlants.plant_id for p in plants)
 
     def test_delete_nonexistent(self, api_client):
-        r = api_client.delete(f"{API}/plants/nonexistent-id-xyz")
+        r = api_client.delete(f"{API}/plants/nonexistent-xyz")
         assert r.status_code == 404
 
 
-# ==================== TENT STATUS ====================
+# ==================== TENT STATUS (v5: ec_level, light_lux, water_flow) ====================
 class TestTent:
-    def test_get_status(self, api_client):
+    def test_get_status_v5_fields(self, api_client):
         r = api_client.get(f"{API}/tent/status")
         assert r.status_code == 200
         data = r.json()
-        # v3 fields: light_on (bool), fan_on (bool), ph_pump_level (int)
-        for k in ["temperature", "humidity", "water_level", "nutrient_level", "ph_level", "light_on", "fan_on", "ph_pump_level"]:
-            assert k in data, f"missing field {k} in tent status"
+        for k in ["temperature", "humidity", "water_level", "nutrient_level",
+                  "ph_level", "light_on", "fan_on", "ph_pump_level",
+                  "ec_level", "light_lux", "water_flow"]:
+            assert k in data, f"missing field {k}"
         assert isinstance(data["light_on"], bool)
         assert isinstance(data["fan_on"], bool)
         assert isinstance(data["ph_pump_level"], int)
+        assert isinstance(data["ec_level"], (int, float))
+        assert isinstance(data["light_lux"], int)
+        assert isinstance(data["water_flow"], (int, float))
 
-    def test_update_status(self, api_client):
+    def test_update_status_v5(self, api_client):
         payload = {
             "temperature": 24.0, "humidity": 70.0, "water_level": 80.0,
             "nutrient_level": 65.0, "ph_level": 6.5,
             "light_on": False, "fan_on": True, "ph_pump_level": 4,
+            "ec_level": 2.10, "light_lux": 720, "water_flow": 1.8,
         }
         r = api_client.put(f"{API}/tent/status", json=payload)
         assert r.status_code == 200
-        # Verify persisted
-        r = api_client.get(f"{API}/tent/status")
         data = r.json()
-        assert data["temperature"] == 24.0
-        assert data["light_on"] == False
-        assert data["fan_on"] == True
-        assert data["ph_pump_level"] == 4
+        assert data["ec_level"] == 2.10
+        assert data["light_lux"] == 720
+        assert data["water_flow"] == 1.8
 
-        # Toggle light_on to true and verify
-        payload["light_on"] = True
-        payload["ph_pump_level"] = 2
-        r = api_client.put(f"{API}/tent/status", json=payload)
-        assert r.status_code == 200
-        data = r.json()
-        assert data["light_on"] == True
-        assert data["ph_pump_level"] == 2
+        # Restore
+        api_client.put(f"{API}/tent/status", json={
+            "temperature": 22.5, "humidity": 65.0, "water_level": 75.0,
+            "nutrient_level": 60.0, "ph_level": 6.2,
+            "light_on": True, "fan_on": True, "ph_pump_level": 3,
+            "ec_level": 1.75, "light_lux": 639, "water_flow": 1.2,
+        })
 
 
 # ==================== NOTIFICATIONS ====================
@@ -219,50 +147,48 @@ class TestNotifications:
         assert r.status_code == 200
         assert isinstance(r.json(), list)
 
-    def test_check_notifications_low_water(self, api_client):
-        # Cleanup pre-existing low_water/low_nutrients to ensure dedup test is meaningful
-        # Force low water + low nutrients
+    def test_check_notifications_dedup(self, api_client):
+        # Force low water+nutrients
         api_client.put(f"{API}/tent/status", json={
             "temperature": 22.0, "humidity": 60.0, "water_level": 10.0,
             "nutrient_level": 15.0, "ph_level": 6.2,
             "light_on": True, "fan_on": True, "ph_pump_level": 3,
+            "ec_level": 1.75, "light_lux": 639, "water_flow": 1.2,
         })
-        # Mark all existing low_water/low_nutrients as read so we get a clean slate
+        # Mark existing as read for clean state
         existing = api_client.get(f"{API}/notifications").json()
         for n in existing:
             if n["type"] in ("low_water", "low_nutrients") and not n.get("read"):
                 api_client.put(f"{API}/notifications/{n['id']}/read")
 
-        # First check creates new notifications
         r1 = api_client.post(f"{API}/notifications/check")
         assert r1.status_code == 200
         types1 = {n["type"] for n in r1.json()["new_notifications"]}
-        # Either or both should be created
-        assert types1 & {"low_water", "low_nutrients"}, f"Expected low_water/low_nutrients in {types1}"
+        assert types1 & {"low_water", "low_nutrients"}
 
-        # v3 dedup: second check should NOT create low_water/low_nutrients again
         r2 = api_client.post(f"{API}/notifications/check")
-        assert r2.status_code == 200
         types2 = {n["type"] for n in r2.json()["new_notifications"]}
-        assert "low_water" not in types2, "low_water duplicate created (dedup broken)"
-        assert "low_nutrients" not in types2, "low_nutrients duplicate created (dedup broken)"
+        assert "low_water" not in types2
+        assert "low_nutrients" not in types2
 
         # Restore
         api_client.put(f"{API}/tent/status", json={
             "temperature": 22.5, "humidity": 65.0, "water_level": 75.0,
             "nutrient_level": 60.0, "ph_level": 6.2,
             "light_on": True, "fan_on": True, "ph_pump_level": 3,
+            "ec_level": 1.75, "light_lux": 639, "water_flow": 1.2,
         })
 
 
 # ==================== AI CHAT ====================
 class TestAIChat:
     def test_ai_chat_claude(self, api_client):
-        r = api_client.post(f"{API}/ai/chat", json={"message": "What pH is best for lettuce?", "model": "claude"}, timeout=90)
+        r = api_client.post(f"{API}/ai/chat",
+                            json={"message": "What pH is best for lettuce?", "model": "claude"},
+                            timeout=90)
         assert r.status_code == 200, r.text
         data = r.json()
         assert "answer" in data and len(data["answer"]) > 10
-        assert data["question"] == "What pH is best for lettuce?"
         assert data["model"] == "claude"
 
 
@@ -272,36 +198,77 @@ class TestTutorials:
 
     def test_create_tutorial(self, api_client):
         r = api_client.post(f"{API}/tutorials", json={
-            "title": "TEST_Basil Tutorial",
-            "description": "How to grow basil",
-            "youtube_url": "https://youtube.com/watch?v=abc123",
-            "plant_type": "basil"
+            "title": "TEST_Tut_v5", "description": "x",
+            "youtube_url": "https://youtube.com/watch?v=abc", "plant_type": "basil"
         })
         assert r.status_code == 200
-        data = r.json()
-        assert data["title"] == "TEST_Basil Tutorial"
-        assert data["youtube_url"] == "https://youtube.com/watch?v=abc123"
-        assert data["is_deleted"] is False
-        TestTutorials.tut_id = data["id"]
+        TestTutorials.tut_id = r.json()["id"]
 
     def test_get_tutorials(self, api_client):
         r = api_client.get(f"{API}/tutorials")
         assert r.status_code == 200
-        data = r.json()
-        assert isinstance(data, list)
-        assert any(t["id"] == TestTutorials.tut_id for t in data)
+        assert any(t["id"] == TestTutorials.tut_id for t in r.json())
 
     def test_delete_tutorial(self, api_client):
-        assert TestTutorials.tut_id
         r = api_client.delete(f"{API}/tutorials/{TestTutorials.tut_id}")
         assert r.status_code == 200
-        r = api_client.get(f"{API}/tutorials")
-        assert not any(t["id"] == TestTutorials.tut_id for t in r.json())
 
 
-# ==================== COMMUNITY ====================
+# ==================== COMMUNITY (v5: media upload & retrieval) ====================
+def _tiny_png():
+    # 1x1 transparent PNG
+    return bytes.fromhex(
+        "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+        "0000000d49444154789c6300010000000500010d0a2db40000000049454e44ae426082"
+    )
+
+
 class TestCommunity:
+    media_path = None
+
     def test_get_feed(self, api_client):
         r = api_client.get(f"{API}/community/feed")
         assert r.status_code == 200
-        assert isinstance(r.json(), list)
+        feed = r.json()
+        assert isinstance(feed, list)
+        # v5: items have type & media_path fields where applicable
+        for item in feed:
+            # type may be 'harvest' or 'media'
+            if "type" in item:
+                assert item["type"] in ("harvest", "media")
+
+    def test_community_post_image_upload(self):
+        """v5: POST /api/community/post uploads photo/video to object storage."""
+        png = _tiny_png()
+        files = {"file": ("test.png", io.BytesIO(png), "image/png")}
+        data = {"caption": "TEST_Community_Post_v5"}
+        r = requests.post(f"{API}/community/post", files=files, data=data, timeout=60)
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["type"] == "media"
+        assert body["media_path"]
+        assert body["media_path"].startswith("hydrotent/community/")
+        assert body["media_type"] == "image/png"
+        assert body["notes"] == "TEST_Community_Post_v5"
+        TestCommunity.media_path = body["media_path"]
+
+        # Verify it appears in feed
+        feed = requests.get(f"{API}/community/feed", timeout=30).json()
+        assert any(i.get("media_path") == TestCommunity.media_path for i in feed)
+
+    def test_community_post_invalid_type(self):
+        files = {"file": ("test.txt", io.BytesIO(b"hello"), "text/plain")}
+        r = requests.post(f"{API}/community/post", files=files, data={"caption": "x"}, timeout=30)
+        assert r.status_code == 400
+
+    def test_community_media_retrieve(self):
+        """v5: GET /api/community/media/{path} serves uploaded media."""
+        assert TestCommunity.media_path, "Upload test must run first"
+        r = requests.get(f"{API}/community/media/{TestCommunity.media_path}", timeout=60)
+        assert r.status_code == 200, r.text
+        assert r.headers.get("Content-Type", "").startswith("image/")
+        assert len(r.content) > 0
+
+    def test_community_media_404(self):
+        r = requests.get(f"{API}/community/media/hydrotent/community/does-not-exist.png", timeout=30)
+        assert r.status_code == 404

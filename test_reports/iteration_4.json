@@ -1,0 +1,49 @@
+{
+  "summary": "v5 e2e testing complete. Backend: 19/22 passed (3 real bugs found). Frontend: ALL v5 UI features verified working - tank indicators, prominent Ask AI card, dynamic plant grid with big images + progress rings, Add Plant card with + icon, Light/Fan toggles, pH pump up/down, read-only sensor cards (Temperature/Humidity/pH/EC/Light/Water Flow with big bold numbers + target ranges), community upload button visible, feed renders harvest + media items, 3-tab navigation works.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "GET /api/tent/status", "issue": "Returns stale DB document missing v5 fields (ec_level, light_lux, water_flow) when an existing tent_status doc was written under v3/v4 schema. The endpoint does NOT merge defaults for missing fields - it returns the raw doc. Fresh installs work because TentStatus() defaults are inserted on first call, but existing deployments will return incomplete payload until PUT is called. Frontend will see undefined for new sensor fields.", "priority": "HIGH"},
+      {"endpoint": "POST /api/community/post", "issue": "`caption` parameter is declared as `caption: str = \"\"` instead of `caption: str = Form(\"\")`. FastAPI does NOT pick up multipart form fields without an explicit Form(...) marker when UploadFile is present. Result: every uploaded media post stores an empty caption regardless of what the client sends. Verified via test - sent 'TEST_Community_Post_v5' caption, DB record stored notes=''. Frontend feed displays generic 'Shared a photo' for every post.", "priority": "HIGH"}
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Community photo/video post caption display", "issue": "All community media posts show generic 'Shared a photo' because backend silently drops captions (root cause is the backend Form(...) bug above). Frontend code paths look correct.", "affected_selectors": ["[data-testid^='feed-item-']"]}
+    ],
+    "design_issues": [
+      {"screen": "Community feed", "issues": ["Old TEST_ harvest entries from previous iterations still cluttering the feed - cosmetic, can be ignored."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "FIX server.py GET /api/tent/status: merge stored doc onto TentStatus() defaults so missing v5 fields (ec_level, light_lux, water_flow) are filled in. Suggested: `merged = {**TentStatus().model_dump(), **status}` then return merged.",
+    "FIX server.py POST /api/community/post: import Form from fastapi and change signature to `caption: str = Form('')`. Same review applies to POST /api/tutorials/upload which has identical pattern (title/description/plant_type params are also missing Form(...) - they currently default silently for every multipart upload).",
+    "Optional cleanup: prune TEST_-prefixed community feed entries from previous iterations."
+  ],
+  "critical_code_review_comments": [
+    "BUG: server.py:357-362 - tutorials/upload also has `title: str = 'Untitled Tutorial'`, `description: str = ''`, `plant_type: str = ''` without Form(...) - same FastAPI issue as community/post. These params are silently ignored from multipart bodies. Existing tutorials in DB likely all have default titles.",
+    "BUG: server.py:189-200 - GET /api/tent/status returns stored doc directly without merging into TentStatus() defaults. Any schema migration that adds fields will leave old DB docs returning partial responses. Fix by spreading defaults: `merged = {**TentStatus().model_dump(), **status}; merged.pop('key', None); return merged`.",
+    "Good: MAX_PLANTS removed cleanly. 8 plants created back-to-back all succeeded. No per-catalog uniqueness check.",
+    "Good: TentStatus model now includes ec_level/light_lux/water_flow as expected. PUT path persists & returns v5 fields correctly.",
+    "Good: /api/community/post correctly validates content_type, persists media to object storage under hydrotent/community/, returns media_path. /api/community/media/{path} streams content with original Content-Type. 404 on unknown path works.",
+    "Good: server.py is 496 lines (under 700). MongoDB _id excluded everywhere. Env vars used correctly (MONGO_URL, DB_NAME, EMERGENT_LLM_KEY).",
+    "Frontend: data-testid coverage is excellent across SimpleUI, ControlPanel, CommunityFeed, App tabs.",
+    "Frontend: PlantCard progress ring + big image confirmed visually. Add Plant card with dashed border + icon renders as first slot in dynamic grid (3 growing plants currently, no 6-slot limit).",
+    "Frontend: Control Panel sensor cards correctly read-only with big bold numbers + 'Target:' ranges. Toggle switches for Grow Light + Fan and pH pump up/down with 5-segment level indicator all present."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py"
+  ],
+  "success_rate": {"backend": "86% (19/22)", "frontend": "100% (all v5 UI features rendered & interactive)"},
+  "test_credentials": "N/A - no auth",
+  "seed_data_creation": "TestPlants creates/deletes TEST_-prefixed plants idempotently. TestCommunity uploaded 1 image to object storage (path hydrotent/community/<uuid>.png) - not cleaned up because there is no DELETE endpoint for community posts. Tutorials soft-delete only.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "After main agent fixes the two backend bugs (status merge + Form imports for community/post AND tutorials/upload), re-run /app/backend/tests/backend_test.py - the 3 failing tests should turn green. Note: test_get_status_v5_fields will only confirm the fix if the GET endpoint merges defaults; alternative would be to migrate the stored tent_status doc, but a merge in the handler is more robust. Community caption test verifies notes == 'TEST_Community_Post_v5'.",
+  "rca of the issue": "1) GET /api/tent/status bug: endpoint returns find_one() result directly. When schema evolved (v3->v4->v5 added ec_level/light_lux/water_flow), existing docs in DB do not have new fields, and they are not back-filled. Reproduce: ensure tent_status doc exists from previous version, call GET /api/tent/status, observe missing fields. Mitigation: merge default model dump with stored doc before returning. 2) POST /api/community/post caption bug: in FastAPI, when an endpoint receives multipart/form-data and you want to capture non-file form fields alongside UploadFile, you MUST annotate the field with Form(...) - a bare default like `caption: str = ''` is interpreted as a query parameter, not a form field. Reproduce: POST multipart with file + caption form field, observe stored doc has notes=''. Mitigation: `from fastapi import Form` and change to `caption: str = Form('')`. Same pattern needs to be applied to POST /api/tutorials/upload's title/description/plant_type params."
+}

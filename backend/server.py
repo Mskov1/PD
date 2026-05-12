@@ -61,8 +61,6 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 # ==================== PLANT CATALOG ====================
-MAX_PLANTS = 6
-
 PLANT_CATALOG = [
     {"id": "lettuce", "name": "Lettuce", "days_to_harvest": 30, "image": "https://images.pexels.com/photos/6849628/pexels-photo-6849628.jpeg?auto=compress&cs=tinysrgb&w=300&h=300&fit=crop", "category": "Leafy Greens"},
     {"id": "basil", "name": "Basil", "days_to_harvest": 25, "image": "https://images.pexels.com/photos/35222890/pexels-photo-35222890.jpeg?auto=compress&cs=tinysrgb&w=300&h=300&fit=crop", "category": "Herbs"},
@@ -97,6 +95,9 @@ class TentStatus(BaseModel):
     light_on: bool = True
     fan_on: bool = True
     ph_pump_level: int = 3
+    ec_level: float = 1.75
+    light_lux: int = 639
+    water_flow: float = 1.2
 
 class NotificationResponse(BaseModel):
     id: str
@@ -131,10 +132,6 @@ async def add_plant(plant: PlantCreate):
     if not catalog_item:
         raise HTTPException(status_code=404, detail="Plant not found in catalog")
     
-    current_count = await db.plants.count_documents({"status": "growing"})
-    if current_count >= MAX_PLANTS:
-        raise HTTPException(status_code=400, detail="Maximum 6 plants allowed in the tent")
-    
     plant_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
     doc = {
@@ -147,7 +144,6 @@ async def add_plant(plant: PlantCreate):
         "image": catalog_item.get("image", ""),
         "planted_at": now,
         "status": "growing",
-        "slot": current_count,
     }
     await db.plants.insert_one(doc)
     doc.pop("_id", None)
@@ -179,10 +175,13 @@ async def harvest_plant(plant_id: str):
     # Add to community feed
     await db.community_feed.insert_one({
         "id": str(uuid.uuid4()),
+        "type": "harvest",
         "plant_name": plant["name"],
         "nickname": plant.get("nickname", plant["name"]),
-        "harvested_at": datetime.now(timezone.utc).isoformat(),
+        "image": plant.get("image", ""),
+        "created_at": datetime.now(timezone.utc).isoformat(),
         "notes": "",
+        "media_path": None,
     })
     return plant
 
@@ -408,7 +407,7 @@ async def stream_video(path: str):
 # ==================== COMMUNITY ROUTES ====================
 @api_router.get("/community/feed")
 async def get_community_feed():
-    feed = await db.community_feed.find({}, {"_id": 0}).sort("harvested_at", -1).to_list(50)
+    feed = await db.community_feed.find({}, {"_id": 0}).sort("created_at", -1).to_list(50)
     return feed
 
 @api_router.post("/community/harvest")
@@ -419,14 +418,55 @@ async def log_harvest(harvest: HarvestCreate):
     
     doc = {
         "id": str(uuid.uuid4()),
+        "type": "harvest",
         "plant_name": plant["name"],
         "nickname": plant.get("nickname", plant["name"]),
-        "harvested_at": datetime.now(timezone.utc).isoformat(),
+        "image": plant.get("image", ""),
+        "created_at": datetime.now(timezone.utc).isoformat(),
         "notes": harvest.notes or "",
+        "media_path": None,
     }
     await db.community_feed.insert_one(doc)
     doc.pop("_id", None)
     return doc
+
+@api_router.post("/community/post")
+async def community_post(
+    file: UploadFile = File(...),
+    caption: str = "",
+):
+    allowed = ["image/jpeg", "image/png", "image/webp", "video/mp4", "video/webm"]
+    if file.content_type not in allowed:
+        raise HTTPException(status_code=400, detail="Only images and videos allowed")
+    
+    ext = file.filename.split(".")[-1] if "." in file.filename else "bin"
+    path = f"{APP_NAME}/community/{uuid.uuid4()}.{ext}"
+    data = await file.read()
+    result = put_object(path, data, file.content_type or "application/octet-stream")
+    
+    doc = {
+        "id": str(uuid.uuid4()),
+        "type": "media",
+        "plant_name": "",
+        "nickname": "",
+        "image": "",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "notes": caption,
+        "media_path": result["path"],
+        "media_type": file.content_type,
+        "original_filename": file.filename,
+    }
+    await db.community_feed.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+@api_router.get("/community/media/{path:path}")
+async def get_community_media(path: str):
+    record = await db.community_feed.find_one({"media_path": path}, {"_id": 0})
+    if not record:
+        raise HTTPException(status_code=404, detail="Media not found")
+    data, content_type = get_object(path)
+    return Response(content=data, media_type=record.get("media_type", content_type))
 
 @api_router.get("/")
 async def root():
