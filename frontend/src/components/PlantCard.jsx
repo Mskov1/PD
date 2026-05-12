@@ -10,6 +10,36 @@ const ICON_MAP = {
   herb: PottedPlant,
 };
 
+function getStrokeColor(isHarvested, isReady) {
+  if (isHarvested) return "var(--ht-brand-secondary)";
+  if (isReady) return "var(--ht-harvest)";
+  return "var(--ht-brand-primary)";
+}
+
+function getBadgeStyle(isHarvested, isReady) {
+  if (isHarvested) return { bg: "rgba(163,184,158,0.3)", color: "var(--ht-text-tertiary)" };
+  if (isReady) return { bg: "rgba(255,107,53,0.15)", color: "var(--ht-harvest)" };
+  return { bg: "rgba(45,90,60,0.1)", color: "var(--ht-brand-primary)" };
+}
+
+function getBadgeLabel(isHarvested, isReady, category) {
+  if (isHarvested) return "Harvested";
+  if (isReady) return "Ready!";
+  return category;
+}
+
+function getBarColor(isHarvested, isReady) {
+  if (isHarvested) return "var(--ht-brand-secondary)";
+  if (isReady) return "var(--ht-harvest)";
+  return "var(--ht-brand-primary)";
+}
+
+function TimerInfo({ isHarvested, isReady, daysElapsed, daysToHarvest, daysLeft }) {
+  if (isHarvested) return <span>Harvested after {daysElapsed} days</span>;
+  if (isReady) return <span className="font-medium" style={{ color: "var(--ht-harvest)" }}>Ready to harvest!</span>;
+  return <span>Day {daysElapsed} of {daysToHarvest} &middot; {daysLeft}d left</span>;
+}
+
 export default function PlantCard({ plant, onRemove, onHarvest }) {
   const { daysElapsed, daysLeft, progress, isReady } = useMemo(() => {
     const planted = new Date(plant.planted_at);
@@ -22,8 +52,10 @@ export default function PlantCard({ plant, onRemove, onHarvest }) {
 
   const isHarvested = plant.status === "harvested";
   const IconComponent = ICON_MAP[plant.icon] || Plant;
+  const strokeColor = getStrokeColor(isHarvested, isReady);
+  const badgeStyle = getBadgeStyle(isHarvested, isReady);
+  const barColor = getBarColor(isHarvested, isReady);
 
-  // Radial progress
   const radius = 32;
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - (progress / 100) * circumference;
@@ -41,13 +73,12 @@ export default function PlantCard({ plant, onRemove, onHarvest }) {
     >
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-3">
-          {/* Radial Progress */}
           <div className="relative w-[76px] h-[76px] flex-shrink-0">
             <svg width="76" height="76" className="-rotate-90">
               <circle cx="38" cy="38" r={radius} fill="none" stroke="var(--ht-bg-secondary)" strokeWidth="5" />
               <circle
                 cx="38" cy="38" r={radius} fill="none"
-                stroke={isHarvested ? "var(--ht-brand-secondary)" : isReady ? "var(--ht-harvest)" : "var(--ht-brand-primary)"}
+                stroke={strokeColor}
                 strokeWidth="5" strokeLinecap="round"
                 strokeDasharray={circumference}
                 strokeDashoffset={strokeDashoffset}
@@ -68,63 +99,34 @@ export default function PlantCard({ plant, onRemove, onHarvest }) {
             <Badge
               variant="secondary"
               className="mt-1 text-[10px] px-2 py-0.5 rounded-full"
-              style={{
-                backgroundColor: isHarvested ? "rgba(163,184,158,0.3)" : isReady ? "rgba(255,107,53,0.15)" : "rgba(45,90,60,0.1)",
-                color: isHarvested ? "var(--ht-text-tertiary)" : isReady ? "var(--ht-harvest)" : "var(--ht-brand-primary)",
-              }}
+              style={{ backgroundColor: badgeStyle.bg, color: badgeStyle.color }}
             >
-              {isHarvested ? "Harvested" : isReady ? "Ready!" : plant.category}
+              {getBadgeLabel(isHarvested, isReady, plant.category)}
             </Badge>
           </div>
         </div>
       </div>
 
-      {/* Timer info */}
       <div className="flex items-center gap-2 mb-3 text-xs" style={{ color: "var(--ht-text-secondary)" }}>
         <Timer size={14} weight="duotone" />
-        {isHarvested ? (
-          <span>Harvested after {daysElapsed} days</span>
-        ) : isReady ? (
-          <span className="font-medium" style={{ color: "var(--ht-harvest)" }}>Ready to harvest!</span>
-        ) : (
-          <span>Day {daysElapsed} of {plant.days_to_harvest} &middot; {daysLeft}d left</span>
-        )}
+        <TimerInfo isHarvested={isHarvested} isReady={isReady} daysElapsed={daysElapsed} daysToHarvest={plant.days_to_harvest} daysLeft={daysLeft} />
       </div>
 
-      {/* Progress bar */}
       <div className="w-full h-1.5 rounded-full mb-3" style={{ backgroundColor: "var(--ht-bg-secondary)" }}>
-        <div
-          className="h-full rounded-full transition-all duration-500"
-          style={{
-            width: `${progress}%`,
-            backgroundColor: isHarvested ? "var(--ht-brand-secondary)" : isReady ? "var(--ht-harvest)" : "var(--ht-brand-primary)",
-          }}
-        />
+        <div className="h-full rounded-full transition-all duration-500" style={{ width: `${progress}%`, backgroundColor: barColor }} />
       </div>
 
-      {/* Actions */}
       <div className="flex items-center gap-2">
         {!isHarvested && isReady && onHarvest && (
-          <Button
-            data-testid={`harvest-btn-${plant.id}`}
-            size="sm"
-            onClick={() => onHarvest(plant.id)}
+          <Button data-testid={`harvest-btn-${plant.id}`} size="sm" onClick={() => onHarvest(plant.id)}
             className="rounded-full text-xs px-3 h-8 transition-all hover:-translate-y-0.5 active:scale-95"
-            style={{ backgroundColor: "var(--ht-harvest)", color: "#fff" }}
-          >
-            <Scissors size={14} weight="bold" className="mr-1" />
-            Harvest
+            style={{ backgroundColor: "var(--ht-harvest)", color: "#fff" }}>
+            <Scissors size={14} weight="bold" className="mr-1" /> Harvest
           </Button>
         )}
         {onRemove && (
-          <Button
-            data-testid={`remove-btn-${plant.id}`}
-            size="sm"
-            variant="ghost"
-            onClick={() => onRemove(plant.id)}
-            className="rounded-full text-xs px-3 h-8 opacity-0 group-hover:opacity-100 transition-all"
-            style={{ color: "var(--ht-error)" }}
-          >
+          <Button data-testid={`remove-btn-${plant.id}`} size="sm" variant="ghost" onClick={() => onRemove(plant.id)}
+            className="rounded-full text-xs px-3 h-8 opacity-0 group-hover:opacity-100 transition-all" style={{ color: "var(--ht-error)" }}>
             <Trash size={14} weight="duotone" />
           </Button>
         )}

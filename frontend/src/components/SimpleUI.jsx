@@ -4,6 +4,21 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogClose, DialogDescription } from "@/components/ui/dialog";
 import { Plus, Scissors, Trash, Warning, Plant, Drop, Flask, Bell, ChatCircleDots, X } from "@phosphor-icons/react";
 
+const FADE_IN = { initial: { opacity: 0, y: -10 }, animate: { opacity: 1, y: 0 }, exit: { opacity: 0, y: -10 } };
+const SCALE_IN = { initial: { opacity: 0, scale: 0.95 }, animate: { opacity: 1, scale: 1 } };
+const SLIDE_IN = { initial: { opacity: 0, x: -12 }, animate: { opacity: 1, x: 0 } };
+const TANK_FILL = { duration: 0.8, ease: "easeOut" };
+
+const NOTIF_BORDER_COLORS = {
+  harvest_ready: "var(--ht-harvest)",
+  low_water: "var(--ht-water)",
+  low_nutrients: "var(--ht-nutrition)",
+};
+
+function getNotifBorderColor(type) {
+  return NOTIF_BORDER_COLORS[type] || "var(--ht-brand-primary)";
+}
+
 /* ── Visual water/nutrient tank indicator ── */
 function TankIndicator({ level, color, label, icon: Icon }) {
   const isLow = level < 30;
@@ -25,7 +40,7 @@ function TankIndicator({ level, color, label, icon: Icon }) {
           className="absolute bottom-0 left-0 right-0 rounded-b-full"
           initial={{ height: 0 }}
           animate={{ height: `${fillPercent}%` }}
-          transition={{ duration: 0.8, ease: "easeOut" }}
+          transition={TANK_FILL}
           style={{ backgroundColor: color, opacity: 0.6 }}
         />
         <div
@@ -60,7 +75,7 @@ function PlantCard({ plant, onHarvest, onRemove }) {
     return { elapsed, left, progress, isReady: left <= 0 };
   }, [plant]);
 
-  const isHarvested = plant.status === "harvested";
+  const isHarvested = plant?.status === "harvested";
   const isReady = lifecycle?.isReady && !isHarvested;
 
   // Radial progress
@@ -68,11 +83,20 @@ function PlantCard({ plant, onHarvest, onRemove }) {
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - ((lifecycle?.progress || 0) / 100) * circumference;
 
+  function getRingColor() {
+    if (isReady) return "var(--ht-harvest)";
+    return "var(--ht-brand-primary)";
+  }
+
+  function getDaysLabel() {
+    if (isReady) return "!";
+    return `${lifecycle?.left}d`;
+  }
+
   return (
     <motion.div
       layout
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
+      {...SCALE_IN}
       data-testid={`plant-card-${plant.id}`}
       className="rounded-2xl border overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:shadow-lg group"
       style={{
@@ -107,14 +131,14 @@ function PlantCard({ plant, onHarvest, onRemove }) {
               <circle cx="28" cy="28" r={radius} fill="none" stroke="rgba(19,42,27,0.1)" strokeWidth="3" />
               <circle
                 cx="28" cy="28" r={radius} fill="none"
-                stroke={isReady ? "var(--ht-harvest)" : "var(--ht-brand-primary)"}
+                stroke={getRingColor()}
                 strokeWidth="3" strokeLinecap="round"
                 strokeDasharray={circumference} strokeDashoffset={strokeDashoffset}
                 style={{ transition: "stroke-dashoffset 0.6s ease" }}
               />
             </svg>
-            <span className="absolute text-[10px] font-bold" style={{ color: isReady ? "var(--ht-harvest)" : "var(--ht-text-primary)" }}>
-              {isReady ? "!" : `${lifecycle?.left}d`}
+            <span className="absolute text-[10px] font-bold" style={{ color: getRingColor() }}>
+              {getDaysLabel()}
             </span>
           </div>
         )}
@@ -168,7 +192,7 @@ export default function SimpleUI({ plants, catalog, tentStatus, notifications, o
       {/* Big Warning Banners */}
       <AnimatePresence>
         {waterLow && (
-          <motion.div key="water-warn" initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
+          <motion.div key="water-warn" {...FADE_IN}
             className="rounded-2xl p-5 flex items-center gap-4 border-l-4"
             style={{ backgroundColor: "rgba(74,144,226,0.1)", borderLeftColor: "var(--ht-water)" }} data-testid="alert-water">
             <div className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 animate-pulse" style={{ backgroundColor: "rgba(74,144,226,0.15)" }}>
@@ -181,7 +205,7 @@ export default function SimpleUI({ plants, catalog, tentStatus, notifications, o
           </motion.div>
         )}
         {nutrientLow && (
-          <motion.div key="nutrient-warn" initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
+          <motion.div key="nutrient-warn" {...FADE_IN}
             className="rounded-2xl p-5 flex items-center gap-4 border-l-4"
             style={{ backgroundColor: "rgba(141,107,148,0.1)", borderLeftColor: "var(--ht-nutrition)" }} data-testid="alert-nutrient">
             <div className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 animate-pulse" style={{ backgroundColor: "rgba(141,107,148,0.15)" }}>
@@ -199,9 +223,9 @@ export default function SimpleUI({ plants, catalog, tentStatus, notifications, o
       {unreadNotifs.length > 0 && (
         <div className="space-y-2" data-testid="inline-notifications">
           {unreadNotifs.map((n) => (
-            <motion.div key={n.id} initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }}
+            <motion.div key={n.id} {...SLIDE_IN}
               className="flex items-center gap-3 rounded-xl px-4 py-3 cursor-pointer transition-all hover:shadow-sm"
-              style={{ backgroundColor: "var(--ht-bg-surface)", borderLeft: `3px solid ${n.type === "harvest_ready" ? "var(--ht-harvest)" : n.type === "low_water" ? "var(--ht-water)" : "var(--ht-nutrition)"}` }}
+              style={{ backgroundColor: "var(--ht-bg-surface)", borderLeft: `3px solid ${getNotifBorderColor(n.type)}` }}
               onClick={() => onMarkNotificationRead?.(n.id)} data-testid={`inline-notif-${n.id}`}>
               <Bell size={14} weight="fill" style={{ color: "var(--ht-brand-primary)" }} />
               <span className="text-xs flex-1" style={{ color: "var(--ht-text-primary)" }}>{n.message}</span>

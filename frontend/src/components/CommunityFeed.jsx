@@ -1,27 +1,35 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { motion } from "framer-motion";
 import axios from "axios";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Plant, Trophy, Clock, Camera, ImageSquare } from "@phosphor-icons/react";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
+const FEED_ITEM_ANIM = { initial: { opacity: 0, y: 12 }, animate: { opacity: 1, y: 0 } };
+
 function MediaDisplay({ item }) {
   const [blobUrl, setBlobUrl] = useState(null);
+  const blobRef = useRef(null);
 
   useEffect(() => {
     if (!item.media_path) return;
     let cancelled = false;
     axios.get(`${API}/community/media/${item.media_path}`, { responseType: "blob" })
       .then((res) => {
-        if (!cancelled) setBlobUrl(URL.createObjectURL(res.data));
+        if (cancelled) return;
+        const url = URL.createObjectURL(res.data);
+        blobRef.current = url;
+        setBlobUrl(url);
       })
-      .catch(() => {});
-    return () => { cancelled = true; if (blobUrl) URL.revokeObjectURL(blobUrl); };
-  }, [item.media_path]); // eslint-disable-line react-hooks/exhaustive-deps
+      .catch(() => { toast.error("Failed to load media"); });
+    return () => {
+      cancelled = true;
+      if (blobRef.current) URL.revokeObjectURL(blobRef.current);
+    };
+  }, [item.media_path]);
 
   if (!blobUrl) return null;
 
@@ -138,8 +146,7 @@ export default function CommunityFeed() {
           {feed.map((item, i) => (
             <motion.div
               key={item.id}
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
+              {...FEED_ITEM_ANIM}
               transition={{ delay: i * 0.03 }}
               className="rounded-2xl border p-4 transition-all duration-300 hover:shadow-md"
               style={{ backgroundColor: "var(--ht-bg-surface)", borderColor: "rgba(19,42,27,0.1)", boxShadow: "0 2px 12px rgba(0,0,0,0.02)" }}

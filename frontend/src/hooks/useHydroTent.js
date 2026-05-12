@@ -5,6 +5,16 @@ import { toast } from "sonner";
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
+const NOTIFICATION_COLORS = {
+  harvest_ready: "#FF6B35",
+  low_water: "#4A90E2",
+  low_nutrients: "#8D6B94",
+};
+
+function getNotificationColor(type) {
+  return NOTIFICATION_COLORS[type] || "#D33F49";
+}
+
 export function usePlantActions() {
   const [plants, setPlants] = useState([]);
   const [catalog, setCatalog] = useState([]);
@@ -121,18 +131,15 @@ export function useNotifications() {
         fetchNotifications();
         res.data.new_notifications.forEach((n) => {
           toast(n.message, {
-            style: {
-              borderLeft: `4px solid ${
-                n.type === "harvest_ready" ? "#FF6B35" :
-                n.type === "low_water" ? "#4A90E2" :
-                n.type === "low_nutrients" ? "#8D6B94" : "#D33F49"
-              }`,
-            },
+            style: { borderLeft: `4px solid ${getNotificationColor(n.type)}` },
           });
         });
       }
-    } catch {
-      /* silent - background check */
+    } catch (error) {
+      // Background check — log but don't toast to avoid spamming UI
+      if (error.response) {
+        toast.error("Failed to check notifications");
+      }
     }
   }, [fetchNotifications]);
 
