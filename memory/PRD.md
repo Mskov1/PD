@@ -6,25 +6,20 @@
 - **AI**: Claude Sonnet 4.5 + GPT-5.2 via Emergent LLM Key
 - **Voice**: Web Speech API (browser-native)
 
-## What's Been Implemented (April 2026)
+## What's Been Implemented (May 2026)
 
-### v4 - Code Quality Refactor (Current)
-**Critical Fixes:**
-- Extracted API logic from App.js into custom hooks: `usePlantActions`, `useTentStatus`, `useNotifications` in `/hooks/useHydroTent.js`
-- Fixed all missing React hook dependencies across all components
-- Removed all `console.error` statements, replaced with `toast.error()` user feedback
-- Extracted sub-components from AIAssistant: `ChatMessage`, `TutorialList`, `VideoAnswerExample`, `useSpeechRecognition` hook
-- Fixed unstable array keys in SimpleUI rows, ControlPanel warnings/pH segments
-- Refactored backend `check_notifications()` into 3 focused functions: `_create_notif()`, `_check_harvest_notifications()`, `_check_water_notifications()`
-- Fixed `useMemo` dependencies in PlantCard and SimpleUI PlantSlot
-- Fixed Python test `is` vs `==` comparisons for boolean assertions
-- Added `DialogDescription` for accessibility compliance
+### v5 - Prototype-Inspired Redesign (Current)
+- **My Tent**: Visual tank fill indicators for water/nutrients (pill-shaped tubes with fill animation). Prominent "Ask AI" card button. Dynamic plant cards with big images and progress rings (no fixed slot limit). Add Plant card with + icon.
+- **Control Panel**: Read-only Live Sensor Data cards with big bold numbers + target ranges (Temperature, Humidity, pH, EC, Light lux, Water flow). Light/Fan toggle switches. pH pump up/down with level indicator.
+- **Community**: Photo/video upload support. Media displayed in feed alongside harvest entries.
+- **AI**: Slide-out drawer with voice input, model selector (Claude/GPT), video tutorial support.
+- **Custom Hooks**: usePlantActions, useTentStatus, useNotifications for clean separation.
+- **Backend**: Extracted notification helpers, Form() for multipart params, TentStatus default merging.
 
 ## Backlog
 ### P1
 - Scheduled reminders (change water, remove roots)
-- Real sensor data (IoT)
+- Real IoT sensor data connection
 - Push notifications
-
 ### P2
-- Multi-tent support, dark mode, photo log, CSV export
+- Multi-tent, dark mode, photo log, CSV export

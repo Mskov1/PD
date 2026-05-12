@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, UploadFile, File, HTTPException, Response
+from fastapi import FastAPI, APIRouter, UploadFile, File, HTTPException, Response, Form
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -197,7 +197,8 @@ async def get_tent_status():
         default.pop("key", None)
         return default
     status.pop("key", None)
-    return status
+    merged = {**TentStatus().model_dump(), **status}
+    return merged
 
 @api_router.put("/tent/status")
 async def update_tent_status(status: TentStatus):
@@ -356,9 +357,9 @@ async def add_tutorial(tutorial: TutorialCreate):
 @api_router.post("/tutorials/upload")
 async def upload_tutorial_video(
     file: UploadFile = File(...),
-    title: str = "Untitled Tutorial",
-    description: str = "",
-    plant_type: str = "",
+    title: str = Form("Untitled Tutorial"),
+    description: str = Form(""),
+    plant_type: str = Form(""),
 ):
     allowed_types = ["video/mp4", "video/webm", "video/quicktime", "video/x-msvideo"]
     if file.content_type not in allowed_types:
@@ -433,7 +434,7 @@ async def log_harvest(harvest: HarvestCreate):
 @api_router.post("/community/post")
 async def community_post(
     file: UploadFile = File(...),
-    caption: str = "",
+    caption: str = Form(""),
 ):
     allowed = ["image/jpeg", "image/png", "image/webp", "video/mp4", "video/webm"]
     if file.content_type not in allowed:
